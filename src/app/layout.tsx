@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { TRPCProvider } from "@/components/providers/trpc-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,20 +36,22 @@ export default function RootLayout({
     >
       <body className="bg-bg text-fg font-sans antialiased">
         <ThemeProvider>
-          {children}
-          <Toaster
-            theme="dark"
-            position="bottom-right"
-            toastOptions={{
-              style: {
-                background: "var(--color-bg-elevated)",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-fg)",
-                fontFamily: "var(--font-sans)",
-                fontSize: "13px",
-              },
-            }}
-          />
+          <TRPCProvider>
+            {children}
+            <Toaster
+              theme="dark"
+              position="bottom-right"
+              toastOptions={{
+                style: {
+                  background: "var(--color-bg-elevated)",
+                  border: "1px solid var(--color-border)",
+                  color: "var(--color-fg)",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "13px",
+                },
+              }}
+            />
+          </TRPCProvider>
         </ThemeProvider>
       </body>
     </html>
