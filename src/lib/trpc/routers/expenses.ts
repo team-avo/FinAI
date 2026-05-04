@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chartOfAccounts, expenses } from "@/lib/db/schema";
+import { chartOfAccounts, expenses, journalEntries, journalLines } from "@/lib/db/schema";
 import { router, protectedProcedure } from "../init";
 import { postExpense, getAccountByCode } from "@/lib/accounting/journal";
 
@@ -200,6 +200,29 @@ export const expensesRouter = router({
         .where(and(...conditions));
 
       return row;
+    }),
+
+  // Revert an AI-posted expense — deletes expense + its journal entry
+  revert: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [expense] = await db
+        .select({ id: expenses.id, journalEntryId: expenses.journalEntryId, source: expenses.source, aiCategorized: expenses.aiCategorized })
+        .from(expenses)
+        .where(and(eq(expenses.id, input.id), eq(expenses.orgId, ctx.orgId)))
+        .limit(1);
+
+      if (!expense) throw new Error("Expense not found");
+
+      // Delete journal lines first (FK), then journal entry
+      if (expense.journalEntryId) {
+        await db.delete(journalLines).where(eq(journalLines.entryId, expense.journalEntryId));
+        await db.delete(journalEntries).where(eq(journalEntries.id, expense.journalEntryId));
+      }
+
+      await db.delete(expenses).where(eq(expenses.id, input.id));
+
+      return { success: true };
     }),
 
   expenseAccounts: protectedProcedure.query(async ({ ctx }) => {
