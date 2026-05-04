@@ -83,3 +83,4 @@ Dark-first, electric-lime accent (`#d4ff00`), Geist Sans + Mono, 13px dense UI.
 Effects: `GridBg`, `Spotlight`, `GlowBorder`, `NumberTicker`, `ShimmerSkeleton`, `GradientMesh` — all in `src/components/effects/`.
 
 Press `⌘K` anywhere in the app to open the command palette.
+# FinAI
