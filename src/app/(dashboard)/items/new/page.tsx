@@ -30,8 +30,14 @@ export default function NewItemPage() {
   const router = useRouter();
   const settingsQuery = trpc.settings.incomeAccounts.useQuery();
 
+  const utils = trpc.useUtils();
+
   const createMutation = trpc.items.create.useMutation({
-    onSuccess: () => { toast.success("Item created"); router.push("/items"); },
+    onSuccess: async () => {
+      await utils.items.list.invalidate();
+      toast.success("Item created");
+      router.push("/items");
+    },
     onError: (err) => toast.error(err.message),
   });
 

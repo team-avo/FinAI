@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Paths that never require auth
 const PUBLIC_PATHS = [
-  "/",        // landing/marketing page
   "/login",
   "/api/auth",
   "/api/trpc",
@@ -35,9 +34,17 @@ export function middleware(req: NextRequest) {
     req.cookies.get("__Secure-better-auth.session_token");
 
   if (!sessionCookie?.value) {
+    // Allow unauthenticated users to see the marketing page at /
+    if (pathname === "/") return NextResponse.next();
+
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Redirect authenticated users from the marketing root to the dashboard
+  if (pathname === "/") {
+    return NextResponse.redirect(new URL("/contacts", req.url));
   }
 
   return NextResponse.next();

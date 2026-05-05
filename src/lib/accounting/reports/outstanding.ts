@@ -1,5 +1,5 @@
 import { db } from "@/lib/db/client";
-import { contacts, invoices } from "@/lib/db/schema";
+import { invoices, expenses, chartOfAccounts } from "@/lib/db/schema";
 import { and, eq, gt, inArray, sql } from "drizzle-orm";
 
 export interface OutstandingInvoice {
@@ -93,8 +93,6 @@ export async function getExpenseBreakdown(
   from: Date,
   to: Date,
 ): Promise<ExpenseBreakdownItem[]> {
-  const { expenses, chartOfAccounts } = await import("@/lib/db/schema");
-
   const rows = await db
     .select({
       accountId: expenses.accountId,
