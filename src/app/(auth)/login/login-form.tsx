@@ -1,16 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { signIn } from "@/lib/auth-client";
-import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LoginForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,11 +25,11 @@ export function LoginForm() {
       return;
     }
 
-    // Full page reload ensures the fresh session cookie is included
-    // in the very first server request — router.push() can race with
-    // the cookie being registered in the browser.
-    const callbackUrl = searchParams.get("callbackUrl");
-    // Avoid looping back to "/" (landing) or "/login" — send to the dashboard
+    // Read callbackUrl from the browser at submit time (no Suspense needed).
+    // Full page reload ensures the fresh session cookie is sent with the
+    // first server request — router.push() races with cookie registration.
+    const params = new URLSearchParams(window.location.search);
+    const callbackUrl = params.get("callbackUrl");
     const dest =
       callbackUrl && callbackUrl !== "/" && callbackUrl !== "/login"
         ? callbackUrl
