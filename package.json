@@ -68,6 +68,9 @@
     "tailwind-merge": "^3.5.0",
     "zod": "^4.4.3"
   },
+  "pnpm": {
+    "ignoredBuiltDependencies": ["sharp", "unrs-resolver"]
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@tailwindcss/postcss": "^4",
