@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
 
 export interface ParsedBill {
   vendorName?: string;
@@ -36,7 +36,7 @@ export async function parseBillFromBase64(
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif",
 ): Promise<ParsedBill> {
   const { text } = await generateText({
-    model: anthropic("claude-haiku-4-5-20251001"),
+    model: google("gemini-2.0-flash"),
     system: SYSTEM_PROMPT,
     messages: [
       {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
 import { db } from "@/lib/db/client";
 import { expenses, chartOfAccounts } from "@/lib/db/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     .join("\n");
 
   const { text: insight } = await generateText({
-    model: anthropic("claude-opus-4-5-20251101"),
+    model: google("gemini-2.5-pro"),
     system: `You are FinAI, an AI accounting assistant for AdvertOut, a digital marketing agency in India.
 Today is ${format(now, "dd MMMM yyyy")}.
 Be concise, professional, and actionable. Format numbers in Indian system (₹1,00,000). Max 3 sentences per anomaly.`,

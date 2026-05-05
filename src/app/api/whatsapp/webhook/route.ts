@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature, sendTextMessage } from "@/lib/whatsapp/client";
 import { streamText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
 import { agentTools } from "@/lib/ai/tools";
 import { buildSystemPrompt } from "@/lib/ai/prompts/system";
 import { db } from "@/lib/db/client";
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     history.push({ role: "user", content: userText });
 
     const result = await streamText({
-      model: anthropic("claude-sonnet-4-6"),
+      model: google("gemini-2.0-flash"),
       system: buildSystemPrompt(),
       messages: history,
       tools: agentTools,

@@ -1,5 +1,5 @@
 import { streamText, convertToModelMessages } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
 import { agentTools } from "@/lib/ai/tools";
 import { buildSystemPrompt } from "@/lib/ai/prompts/system";
 
@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const modelMessages = await convertToModelMessages(messages);
 
   const result = streamText({
-    model: anthropic("claude-sonnet-4-6"),
+    model: google("gemini-2.0-flash"),
     system: buildSystemPrompt(),
     messages: modelMessages,
     tools: agentTools,
