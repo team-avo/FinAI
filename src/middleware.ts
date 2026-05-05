@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Paths that never require auth
 const PUBLIC_PATHS = [
+  "/",        // landing/marketing page
   "/login",
   "/api/auth",
   "/api/trpc",

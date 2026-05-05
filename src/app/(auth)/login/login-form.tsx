@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "@/lib/auth-client";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +29,16 @@ export function LoginForm() {
       return;
     }
 
-    router.push("/");
-    router.refresh();
+    // Full page reload ensures the fresh session cookie is included
+    // in the very first server request — router.push() can race with
+    // the cookie being registered in the browser.
+    const callbackUrl = searchParams.get("callbackUrl");
+    // Avoid looping back to "/" (landing) or "/login" — send to the dashboard
+    const dest =
+      callbackUrl && callbackUrl !== "/" && callbackUrl !== "/login"
+        ? callbackUrl
+        : "/contacts";
+    window.location.href = dest;
   }
 
   return (
