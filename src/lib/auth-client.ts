@@ -2,8 +2,8 @@
 
 import { createAuthClient } from "better-auth/react";
 
-export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-});
+// No baseURL — defaults to the current page origin, which is correct for same-origin usage
+// and avoids the env-var-baked-at-build-time problem.
+export const authClient = createAuthClient();
 
 export const { signIn, signOut, signUp, useSession } = authClient;
