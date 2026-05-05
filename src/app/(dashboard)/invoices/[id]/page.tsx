@@ -35,6 +35,10 @@ export default function InvoiceDetailPage() {
   const updateStatus = trpc.invoices.updateStatus.useMutation({
     onSuccess: () => { toast.success("Status updated"); refetch(); },
   });
+  const sendEmail = trpc.invoices.sendEmail.useMutation({
+    onSuccess: () => { toast.success("Invoice emailed to client"); refetch(); },
+    onError: (err) => toast.error(err.message),
+  });
   const recordPayment = trpc.invoices.recordPayment.useMutation({
     onSuccess: () => { toast.success("Payment recorded"); setPayDialogOpen(false); refetch(); },
     onError: (err) => toast.error(err.message),
@@ -82,13 +86,27 @@ export default function InvoiceDetailPage() {
         </div>
         <div className="flex gap-2">
           {invoice.status === "draft" && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => updateStatus.mutate({ id: invoice.id, status: "sent" })}
-            >
-              <Send className="h-3.5 w-3.5" /> Mark Sent
-            </Button>
+            <>
+              {invoice.contactEmail ? (
+                <Button
+                  size="sm"
+                  onClick={() => sendEmail.mutate({ id: invoice.id })}
+                  disabled={sendEmail.isPending}
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {sendEmail.isPending ? "Sending…" : "Send Invoice"}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => updateStatus.mutate({ id: invoice.id, status: "sent" })}
+                  disabled={updateStatus.isPending}
+                >
+                  <Send className="h-3.5 w-3.5" /> Mark Sent
+                </Button>
+              )}
+            </>
           )}
           {canRecord && (
             <Button size="sm" onClick={() => setPayDialogOpen(true)}>

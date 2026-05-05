@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db/client";
-import { contacts, invoices, expenses, invoiceLines, organizations } from "@/lib/db/schema";
+import { contacts, invoices, expenses, invoiceLines, organizations, vendorCategories } from "@/lib/db/schema";
 import { eq, and, ilike, or, desc } from "drizzle-orm";
 import { getPnLReport } from "@/lib/accounting/reports/pnl";
 import { getOutstandingReceivables, getExpenseBreakdown } from "@/lib/accounting/reports/outstanding";
@@ -294,6 +294,25 @@ export const agentTools = {
     },
   }),
 
+  learnVendorCategory: tool({
+    description: "Save a vendor→category mapping so future expenses from this vendor are auto-categorized. Use this when the user corrects a category or explicitly tells you what a vendor should map to.",
+    inputSchema: z.object({
+      vendorPattern: z.string().describe("Vendor name or pattern, e.g. 'Swiggy', 'AWS'"),
+      accountCode: z.string().describe("Chart of accounts code, e.g. '6540' for Meals & Food"),
+    }),
+    execute: async (input) => {
+      const accountId = await getAccountByCode(ORG_ID, input.accountCode);
+      if (!accountId) return `Account code ${input.accountCode} not found`;
+
+      await db
+        .insert(vendorCategories)
+        .values({ orgId: ORG_ID, vendorPattern: input.vendorPattern, accountId })
+        .onConflictDoNothing();
+
+      return `Learned: ${input.vendorPattern} → account ${input.accountCode}`;
+    },
+  }),
+
   getRecentInvoices: tool({
     description: "Get list of recent invoices",
     inputSchema: getRecentInvoicesParams,
@@ -328,6 +347,16 @@ export const agentTools = {
 async function resolveExpenseAccount(categoryDescription: string): Promise<string | null> {
   const lower = categoryDescription.toLowerCase();
 
+  // 1. Check DB vendor→category rules first (user-taught mappings take priority)
+  const dbRules = await db
+    .select({ accountId: vendorCategories.accountId })
+    .from(vendorCategories)
+    .where(and(eq(vendorCategories.orgId, ORG_ID), ilike(vendorCategories.vendorPattern, `%${lower}%`)))
+    .limit(1);
+
+  if (dbRules[0]?.accountId) return dbRules[0].accountId;
+
+  // 2. Fall back to hardcoded keyword matching
   const keywords = [
     { pattern: ["food", "meal", "swiggy", "zomato", "lunch", "dinner", "breakfast"], code: "6540" },
     { pattern: ["cab", "uber", "ola", "taxi", "transport", "rapido", "auto"], code: "6520" },

@@ -44,7 +44,7 @@ export function middleware(req: NextRequest) {
 
   // Redirect authenticated users from the marketing root to the dashboard
   if (pathname === "/") {
-    return NextResponse.redirect(new URL("/contacts", req.url));
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
   return NextResponse.next();

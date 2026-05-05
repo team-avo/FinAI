@@ -6,6 +6,12 @@ import { router, protectedProcedure } from "../init";
 import { calculateLineGST, isInterstateSale, summariseInvoiceTax } from "@/lib/accounting/gst";
 import { postInvoice, postPaymentReceipt, getAccountByCode } from "@/lib/accounting/journal";
 import { createId } from "@/lib/db/utils";
+import { sendInvoiceEmail } from "@/lib/email/resend";
+import { renderToBuffer } from "@react-pdf/renderer";
+import { createElement } from "react";
+import type { ReactElement } from "react";
+import type { DocumentProps } from "@react-pdf/renderer";
+import { InvoicePDF } from "@/lib/pdf/invoice-template";
 
 const invoiceLineInput = z.object({
   itemId: z.string().optional(),
@@ -296,6 +302,57 @@ export const invoicesRouter = router({
         .from(invoiceLines)
         .where(eq(invoiceLines.invoiceId, input.invoiceId))
         .orderBy(asc(invoiceLines.sortOrder));
+    }),
+
+  sendEmail: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [invoice] = await db
+        .select()
+        .from(invoices)
+        .where(and(eq(invoices.id, input.id), eq(invoices.orgId, ctx.orgId)))
+        .limit(1);
+
+      if (!invoice) throw new Error("Invoice not found");
+      if (!invoice.contactEmail) throw new Error("No email address on this invoice — add one to the contact first");
+
+      const lines = await db
+        .select()
+        .from(invoiceLines)
+        .where(eq(invoiceLines.invoiceId, invoice.id))
+        .orderBy(asc(invoiceLines.sortOrder));
+
+      const [org] = await db
+        .select({ name: organizations.name, gstin: organizations.gstin, address: organizations.address, email: organizations.email, phone: organizations.phone })
+        .from(organizations)
+        .where(eq(organizations.id, ctx.orgId))
+        .limit(1);
+
+      const pdfBuffer = await renderToBuffer(
+        createElement(InvoicePDF, { invoice, lines, org: org ?? { name: "AdvertOut" } }) as ReactElement<DocumentProps>,
+      );
+
+      const dueDate = invoice.dueDate
+        ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(invoice.dueDate))
+        : undefined;
+
+      await sendInvoiceEmail({
+        to: invoice.contactEmail,
+        contactName: invoice.contactName,
+        invoiceNumber: invoice.number,
+        amount: `₹${parseFloat(invoice.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+        dueDate,
+        pdfBuffer: Buffer.from(pdfBuffer),
+      });
+
+      if (invoice.status === "draft") {
+        await db
+          .update(invoices)
+          .set({ status: "sent", updatedAt: new Date() })
+          .where(eq(invoices.id, invoice.id));
+      }
+
+      return { success: true };
     }),
 
   stats: protectedProcedure.query(async ({ ctx }) => {

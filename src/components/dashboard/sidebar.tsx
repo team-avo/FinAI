@@ -9,6 +9,7 @@ import {
   FileText,
   Home,
   MessageSquare,
+  Receipt,
   Settings,
   Users,
   Zap,
@@ -27,6 +28,7 @@ const NAV = [
   { href: "/expenses", icon: CreditCard, label: "Expenses" },
   { href: "/contacts", icon: Users, label: "Contacts" },
   { href: "/items", icon: BookOpen, label: "Items" },
+  { href: "/payments", icon: Receipt, label: "Payments" },
   { href: "/reports", icon: BarChart3, label: "Reports" },
   { href: "/chat", icon: MessageSquare, label: "AI Chat" },
 ];
