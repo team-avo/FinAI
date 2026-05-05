@@ -1,5 +1,5 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema";
 
 function getDb() {
@@ -7,8 +7,8 @@ function getDb() {
   if (!url) {
     return null as unknown as ReturnType<typeof drizzle>;
   }
-  const sql = neon(url);
-  return drizzle(sql, { schema });
+  const client = postgres(url, { max: 10 });
+  return drizzle(client, { schema });
 }
 
 export const db = getDb();
