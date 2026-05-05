@@ -1,8 +1,9 @@
 import { db } from "@/lib/db/client";
-import { chartOfAccounts, organizations, taxRates, vendorCategories } from "@/lib/db/schema";
+import { chartOfAccounts, memberships, organizations, taxRates, vendorCategories } from "@/lib/db/schema";
 import { createId } from "@/lib/db/utils";
 import { DEFAULT_COA, VENDOR_CATEGORY_RULES } from "./coa";
 import { GST_RATES } from "./tax-rates";
+import { auth } from "@/lib/auth";
 
 /**
  * Seeds the database for a new organization with:
@@ -81,4 +82,44 @@ export async function seedAdvertOut() {
 
   await seedOrg(orgId);
   console.log("✓ AdvertOut seeded");
+}
+
+/**
+ * Creates the initial admin user and links them to AdvertOut org.
+ * Safe to call multiple times — skips if email already exists.
+ */
+export async function seedAdminUser({
+  name,
+  email,
+  password,
+}: {
+  name: string;
+  email: string;
+  password: string;
+}) {
+  const ctx = await auth.api.signUpEmail({
+    body: { name, email, password },
+    asResponse: false,
+  }).catch((err: unknown) => {
+    // Better Auth throws when user already exists
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("exist")) {
+      console.log(`  user ${email} already exists, skipping`);
+      return null;
+    }
+    throw err;
+  });
+
+  if (!ctx) return;
+
+  // Link the new user to the AdvertOut org as owner
+  const userId = (ctx as { user?: { id: string } }).user?.id;
+  if (userId) {
+    await db
+      .insert(memberships)
+      .values({ orgId: "advertout", userId, role: "owner" })
+      .onConflictDoNothing();
+  }
+
+  console.log(`✓ Admin user ${email} created`);
 }
