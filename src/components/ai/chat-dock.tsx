@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Bot, Send, X, Loader2 } from "lucide-react";
 import { useChat } from "@ai-sdk/react";
-import { TextStreamChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,7 +23,7 @@ export function ChatDock({ open, onClose }: { open: boolean; onClose: () => void
   const [input, setInput] = useState("");
 
   const { messages, sendMessage, status } = useChat({
-    transport: new TextStreamChatTransport({ api: "/api/ai/chat" }),
+    transport: new DefaultChatTransport({ api: "/api/ai/chat" }),
   });
 
   const isLoading = status === "submitted" || status === "streaming";
