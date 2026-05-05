@@ -1,6 +1,6 @@
 import { db } from "@/lib/db/client";
 import { invoices, expenses, chartOfAccounts } from "@/lib/db/schema";
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lte, sql } from "drizzle-orm";
 
 export interface OutstandingInvoice {
   id: string;
@@ -105,8 +105,8 @@ export async function getExpenseBreakdown(
     .where(
       and(
         eq(expenses.orgId, orgId),
-        sql`${expenses.date} >= ${from}`,
-        sql`${expenses.date} <= ${to}`,
+        gte(expenses.date, from),
+        lte(expenses.date, to),
       ),
     )
     .groupBy(expenses.accountId, chartOfAccounts.name)
