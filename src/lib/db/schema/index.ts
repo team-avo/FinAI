@@ -8,3 +8,4 @@ export * from "./expenses";
 export * from "./journal";
 export * from "./attachments";
 export * from "./ai";
+export * from "./dashboards";
