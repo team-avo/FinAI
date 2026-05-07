@@ -1,6 +1,17 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy init so the module doesn't crash at import time when the env is
+// missing (dev without .env.local, build prerender steps, etc.).
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (_resend) return _resend;
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    throw new Error("RESEND_API_KEY is not configured — cannot send email.");
+  }
+  _resend = new Resend(key);
+  return _resend;
+}
 
 const FROM = process.env.EMAIL_FROM ?? "FinAI <noreply@finai.advertout.in>";
 
@@ -28,7 +39,7 @@ export async function sendInvoiceEmail({
       ]
     : undefined;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to,
     subject: `Invoice ${invoiceNumber} from AdvertOut`,
@@ -59,7 +70,7 @@ export async function sendMagicLinkEmail({
   to: string;
   url: string;
 }) {
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to,
     subject: "Sign in to FinAI",

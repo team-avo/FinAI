@@ -2,7 +2,7 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { dashboardLayouts } from "@/lib/db/schema";
-import { router, protectedProcedure } from "../init";
+import { router, protectedProcedure, publicProcedure } from "../init";
 import { buildDefaultLayout, DEFAULT_WIDGET_IDS, type WidgetId } from "@/lib/dashboard/widgets-registry";
 
 const gridItemSchema = z.object({
@@ -26,29 +26,39 @@ const saveLayoutSchema = z.object({
 });
 
 export const dashboardsRouter = router({
-  // Get the current user's layout. If none exists, return the default layout
-  // (without persisting — persistence happens on first explicit save).
-  getMyLayout: protectedProcedure.query(async ({ ctx }) => {
-    if (!ctx.userId) {
+  // Get the current user's layout. If none exists (or running unauthenticated
+  // / without a DB in dev), return the default layout with onboarding marked
+  // complete so the modal doesn't auto-open in demo mode.
+  getMyLayout: publicProcedure.query(async ({ ctx }) => {
+    const fallback = () => {
       const def = buildDefaultLayout();
-      return { ...def, isDefault: true, onboardingCompleted: null as Date | null };
-    }
-    const [row] = await db
-      .select()
-      .from(dashboardLayouts)
-      .where(and(eq(dashboardLayouts.userId, ctx.userId), eq(dashboardLayouts.orgId, ctx.orgId)))
-      .limit(1);
-
-    if (!row) {
-      const def = buildDefaultLayout();
-      return { ...def, isDefault: true, onboardingCompleted: null as Date | null };
-    }
-    return {
-      gridConfig: row.gridConfig,
-      widgets: row.widgets,
-      isDefault: false,
-      onboardingCompleted: row.onboardingCompleted,
+      return {
+        ...def,
+        isDefault: true,
+        // In dev without auth, surface the layout immediately and skip onboarding.
+        onboardingCompleted: ctx.userId ? null : new Date(),
+      };
     };
+
+    if (!ctx.userId || !db) return fallback();
+
+    try {
+      const [row] = await db
+        .select()
+        .from(dashboardLayouts)
+        .where(and(eq(dashboardLayouts.userId, ctx.userId), eq(dashboardLayouts.orgId, ctx.orgId)))
+        .limit(1);
+
+      if (!row) return fallback();
+      return {
+        gridConfig: row.gridConfig,
+        widgets: row.widgets,
+        isDefault: false,
+        onboardingCompleted: row.onboardingCompleted,
+      };
+    } catch {
+      return fallback();
+    }
   }),
 
   saveLayout: protectedProcedure.input(saveLayoutSchema).mutation(async ({ ctx, input }) => {

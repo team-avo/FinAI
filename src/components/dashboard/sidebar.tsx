@@ -2,18 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BarChart3,
-  BookOpen,
-  CreditCard,
-  FileText,
-  Home,
-  MessageSquare,
-  Receipt,
-  Settings,
-  Users,
-  Zap,
-} from "lucide-react";
+import { Home, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -22,18 +11,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-const NAV = [
-  { href: "/", icon: Home, label: "Dashboard" },
-  { href: "/invoices", icon: FileText, label: "Invoices" },
-  { href: "/expenses", icon: CreditCard, label: "Expenses" },
-  { href: "/contacts", icon: Users, label: "Contacts" },
-  { href: "/items", icon: BookOpen, label: "Items" },
-  { href: "/payments", icon: Receipt, label: "Payments" },
-  { href: "/reports", icon: BarChart3, label: "Reports" },
-  { href: "/chat", icon: MessageSquare, label: "AI Chat" },
-];
-
-const BOTTOM_NAV = [{ href: "/settings", icon: Settings, label: "Settings" }];
+// Phase 1B: Dashboard-only sidebar. Other surfaces are temporarily hidden
+// while the Zoho integration is built — re-introduce as features ship.
+const NAV = [{ href: "/dashboard", icon: Home, label: "Dashboard" }];
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -43,7 +23,7 @@ export function Sidebar() {
       <nav className="fixed left-0 top-0 z-40 flex h-full w-12 flex-col items-center border-r border-border bg-bg py-3 gap-1">
         {/* Logo */}
         <Link
-          href="/"
+          href="/dashboard"
           className="flex h-8 w-8 items-center justify-center rounded mb-3"
         >
           <Zap className="h-5 w-5 text-accent" strokeWidth={2.5} />
@@ -51,22 +31,6 @@ export function Sidebar() {
 
         <div className="flex flex-1 flex-col gap-0.5 w-full px-1.5">
           {NAV.map((item) => (
-            <SidebarItem
-              key={item.href}
-              href={item.href}
-              icon={item.icon}
-              label={item.label}
-              active={
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href)
-              }
-            />
-          ))}
-        </div>
-
-        <div className="flex flex-col gap-0.5 w-full px-1.5">
-          {BOTTOM_NAV.map((item) => (
             <SidebarItem
               key={item.href}
               href={item.href}

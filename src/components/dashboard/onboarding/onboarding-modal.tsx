@@ -91,62 +91,37 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                     transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                     className="text-center space-y-6"
                   >
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: 0.2, duration: 0.5 }}
-                      className="inline-flex items-center justify-center"
-                    >
+                    <div className="inline-flex items-center justify-center fin-fade-in fin-d-200">
                       <div className="relative">
                         <div className="absolute inset-0 bg-accent/20 blur-2xl rounded-full" />
                         <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-accent text-accent-fg">
                           <Zap className="h-8 w-8" strokeWidth={2.5} />
                         </div>
                       </div>
-                    </motion.div>
-
-                    <div className="space-y-3">
-                      <motion.h1
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 }}
-                        className="text-balance text-4xl font-bold tracking-tight text-fg leading-tight"
-                      >
-                        Welcome to <span className="text-accent">FinAI</span>
-                      </motion.h1>
-                      <motion.p
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4 }}
-                        className="text-fg-muted text-balance max-w-md mx-auto"
-                      >
-                        Your AI accountant lives on WhatsApp. Let's set up your dashboard so it
-                        shows what matters to <span className="text-fg">you</span>.
-                      </motion.p>
                     </div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.55 }}
-                      className="flex items-center justify-center gap-3 pt-2"
-                    >
+                    <div className="space-y-3">
+                      <h1 className="text-balance text-4xl font-bold tracking-tight text-fg leading-tight fin-fade-in-up fin-d-300">
+                        Welcome to <span className="text-accent">FinAI</span>
+                      </h1>
+                      <p className="text-fg-muted text-balance max-w-md mx-auto fin-fade-in-up fin-d-400">
+                        Your AI accountant lives on WhatsApp. Let&apos;s set up your dashboard so it
+                        shows what matters to <span className="text-fg">you</span>.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-3 pt-2 fin-fade-in-up fin-d-500">
                       <Button size="lg" onClick={() => setStep("pick")}>
                         Continue
                         <ArrowRight className="h-4 w-4" />
                       </Button>
-                    </motion.div>
+                    </div>
 
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.7 }}
-                      className="flex items-center justify-center gap-1 text-[11px] font-mono uppercase tracking-widest text-fg-subtle pt-4"
-                    >
+                    <div className="flex items-center justify-center gap-1 text-[11px] font-mono uppercase tracking-widest text-fg-subtle pt-4 fin-fade-in fin-d-700">
                       <span>Step 1</span>
                       <span className="text-fg-muted">·</span>
                       <span>of 2</span>
-                    </motion.div>
+                    </div>
                   </motion.div>
                 )}
 

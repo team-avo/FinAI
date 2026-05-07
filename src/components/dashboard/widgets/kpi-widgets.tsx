@@ -111,7 +111,7 @@ function RevenueDrillContent({
                 }}
                 formatter={(v) => formatINR(Number(v ?? 0))}
               />
-              <Bar dataKey="revenue" fill="var(--color-accent)" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="revenue" fill="var(--color-accent)" radius={[2, 2, 0, 0]} isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -450,9 +450,9 @@ function ProfitDrillContent({ data }: { data: DashboardAggregate }) {
                 }}
                 formatter={(v) => formatINR(Number(v ?? 0))}
               />
-              <Bar dataKey="revenue" fill="var(--color-accent)" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="expenses" fill="var(--color-fg-muted)" opacity={0.5} radius={[2, 2, 0, 0]} />
-              <Bar dataKey="netProfit" fill="var(--color-positive)" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="revenue" fill="var(--color-accent)" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+              <Bar dataKey="expenses" fill="var(--color-fg-muted)" opacity={0.5} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+              <Bar dataKey="netProfit" fill="var(--color-positive)" radius={[2, 2, 0, 0]} isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -631,8 +631,8 @@ function BankDrillContent({ data }: { data: DashboardAggregate }) {
                 }}
                 formatter={(v) => formatINR(Number(v ?? 0))}
               />
-              <Bar dataKey="inflow" fill="var(--color-positive)" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="outflow" fill="var(--color-negative)" opacity={0.5} radius={[2, 2, 0, 0]} />
+              <Bar dataKey="inflow" fill="var(--color-positive)" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+              <Bar dataKey="outflow" fill="var(--color-negative)" opacity={0.5} radius={[2, 2, 0, 0]} isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
         </div>

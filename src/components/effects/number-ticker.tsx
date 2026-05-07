@@ -1,6 +1,6 @@
 "use client";
 
-import { animate, useInView, useMotionValue, useTransform } from "motion/react";
+import { animate, useInView, useMotionValue } from "motion/react";
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,11 @@ interface NumberTickerProps {
   className?: string;
 }
 
+function formatValue(v: number, decimals: number, prefix: string, suffix: string) {
+  const fixed = Number(v.toFixed(decimals));
+  return `${prefix}${fixed.toLocaleString("en-IN")}${suffix}`;
+}
+
 export function NumberTicker({
   value,
   prefix = "",
@@ -25,46 +30,35 @@ export function NumberTicker({
   duration = 1.5,
   className,
 }: NumberTickerProps) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const motionValue = useMotionValue(0);
-  const inView = useInView(ref, { once: true, margin: "0px 0px -20px 0px" });
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const motionValue = useMotionValue(value);
+  const inView = useInView(spanRef, { once: true, margin: "0px 0px -20px 0px" });
 
-  const rounded = useTransform(motionValue, (v) => {
-    const formatted = v.toFixed(decimals);
-    return `${prefix}${Number(formatted).toLocaleString("en-IN")}${suffix}`;
-  });
+  // Subscribe motion → DOM textContent
+  useEffect(() => {
+    return motionValue.on("change", (v) => {
+      if (spanRef.current) {
+        spanRef.current.textContent = formatValue(v, decimals, prefix, suffix);
+      }
+    });
+  }, [motionValue, decimals, prefix, suffix]);
 
+  // Run the count-up when in view (and reset to 0 first so it ticks)
   useEffect(() => {
     if (!inView) return;
-    animate(motionValue, value, {
+    motionValue.set(0);
+    const controls = animate(motionValue, value, {
       duration,
       ease: [0.16, 1, 0.3, 1],
     });
+    return () => controls.stop();
   }, [inView, value, duration, motionValue]);
 
+  // Render with the final value as initial textContent so the number is
+  // visible immediately even if the motion subscription hasn't run yet.
   return (
-    <motion.span
-      ref={ref}
-      className={cn("font-mono tabular-nums", className)}
-      style={{ ...({} as object) }}
-    >
-      {/* We use the motion value directly via useTransform */}
-      <MotionText motionValue={rounded} />
-    </motion.span>
+    <span ref={spanRef} className={cn("font-mono tabular-nums", className)}>
+      {formatValue(value, decimals, prefix, suffix)}
+    </span>
   );
 }
-
-function MotionText({ motionValue }: { motionValue: ReturnType<typeof useTransform<number, string>> }) {
-  const ref = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    return motionValue.on("change", (v) => {
-      if (ref.current) ref.current.textContent = v;
-    });
-  }, [motionValue]);
-
-  return <span ref={ref} />;
-}
-
-// Re-export motion to avoid separate import in consumers
-import { motion } from "motion/react";

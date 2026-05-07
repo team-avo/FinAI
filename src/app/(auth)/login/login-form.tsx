@@ -33,7 +33,7 @@ export function LoginForm() {
     const dest =
       callbackUrl && callbackUrl !== "/" && callbackUrl !== "/login"
         ? callbackUrl
-        : "/contacts";
+        : "/dashboard";
     window.location.href = dest;
   }
 

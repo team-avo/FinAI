@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { WidgetCard } from "@/components/dashboard/grid/widget-card";
 import { DrillDownModal, useDrillStack } from "./drill-down-modal";
+import { ChartContainer } from "./chart-container";
 import { formatINR } from "@/lib/utils";
 import type { DashboardAggregate } from "@/lib/dashboard/types";
 
@@ -49,7 +50,9 @@ export function RevenueVsExpensesWidget({ data, editing, onRemove }: WidgetProps
       editing={editing}
       onRemove={onRemove}
     >
-      <ResponsiveContainer width="100%" height="100%" minHeight={200}>
+      <ChartContainer minHeight={200}>
+        {({ width, height }) => (
+        <ResponsiveContainer width={width} height={height}>
         <BarChart data={data.trend.monthly} barGap={4} barSize={14}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.04)" />
           <XAxis
@@ -78,11 +81,13 @@ export function RevenueVsExpensesWidget({ data, editing, onRemove }: WidgetProps
               name === "revenue" ? "Revenue" : name === "expenses" ? "Expenses" : "Net Profit",
             ]}
           />
-          <Bar dataKey="revenue" fill="var(--color-accent)" radius={[2, 2, 0, 0]} opacity={0.95} />
-          <Bar dataKey="expenses" fill="var(--color-fg-muted)" opacity={0.45} radius={[2, 2, 0, 0]} />
-          <Bar dataKey="netProfit" fill="var(--color-positive)" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="revenue" fill="var(--color-accent)" radius={[2, 2, 0, 0]} opacity={0.95} isAnimationActive={false} />
+          <Bar dataKey="expenses" fill="var(--color-fg-muted)" opacity={0.45} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+          <Bar dataKey="netProfit" fill="var(--color-positive)" radius={[2, 2, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
+        )}
+      </ChartContainer>
     </WidgetCard>
   );
 }
@@ -136,7 +141,9 @@ export function ExpensesByCategoryWidget({ data, editing, onRemove }: WidgetProp
               ))}
             </div>
           </div>
-          <ResponsiveContainer width="100%" height="100%" minHeight={140}>
+          <ChartContainer minHeight={140}>
+            {({ width, height }) => (
+            <ResponsiveContainer width={width} height={height}>
             <PieChart>
               <Pie
                 data={chartData}
@@ -148,6 +155,7 @@ export function ExpensesByCategoryWidget({ data, editing, onRemove }: WidgetProp
                 outerRadius="100%"
                 stroke="var(--color-bg-elevated)"
                 strokeWidth={2}
+                isAnimationActive={false}
               >
                 {chartData.map((entry, i) => (
                   <Cell key={i} fill={entry.color} />
@@ -164,6 +172,8 @@ export function ExpensesByCategoryWidget({ data, editing, onRemove }: WidgetProp
               />
             </PieChart>
           </ResponsiveContainer>
+            )}
+          </ChartContainer>
         </div>
       </WidgetCard>
       <DrillDownModal open={drill.open} onOpenChange={drill.setOpen} levels={drill.levels} onPop={drill.pop} />
