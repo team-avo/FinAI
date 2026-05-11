@@ -10,3 +10,4 @@ export * from "./attachments";
 export * from "./ai";
 export * from "./dashboards";
 export * from "./proactivity";
+export * from "./zoho";

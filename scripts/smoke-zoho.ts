@@ -1,14 +1,21 @@
 /**
  * Quick smoke test for the Zoho client. Runs the aggregator end-to-end
- * against live Zoho and prints the resulting top-level numbers.
+ * against the FIRST `zoho_connections` row in the DB and prints the resulting
+ * top-level numbers.
  *
- * Usage: ZOHO_*=... pnpm tsx scripts/smoke-zoho.ts
+ * Usage: DATABASE_URL=... ZOHO_CLIENT_ID=... ZOHO_CLIENT_SECRET=... \
+ *        pnpm tsx scripts/smoke-zoho.ts
+ *
+ * (After v2 the script needs an actual connected user, since refresh tokens
+ *  live in the DB, not env vars. Run the OAuth flow at least once first.)
  */
 
+import { db } from "../src/lib/db/client";
+import { zohoConnections } from "../src/lib/db/schema";
 import { buildZohoAggregate } from "../src/lib/zoho/aggregator";
 
 async function main() {
-  const required = ["ZOHO_REFRESH_TOKEN", "ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET", "ZOHO_ORG_ID"];
+  const required = ["ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET", "DATABASE_URL"];
   for (const key of required) {
     if (!process.env[key]) {
       console.error(`✗ Missing ${key}`);
@@ -16,9 +23,15 @@ async function main() {
     }
   }
 
-  console.log("▶ Fetching aggregate from live Zoho...\n");
+  const [conn] = await db.select().from(zohoConnections).limit(1);
+  if (!conn) {
+    console.error("✗ No Zoho connections in DB. Run the OAuth flow at /api/zoho/connect first.");
+    process.exit(1);
+  }
+
+  console.log(`▶ Using connection for zoho_org=${conn.zohoOrgId} (${conn.zohoOrgName ?? "—"})\n`);
   const t0 = Date.now();
-  const data = await buildZohoAggregate();
+  const data = await buildZohoAggregate(conn);
   const ms = Date.now() - t0;
 
   const fmt = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
@@ -41,16 +54,6 @@ async function main() {
   console.log(`Top categories: ${data.expensesData.byCategory.length}`);
   console.log(`Top vendors: ${data.expensesData.topVendors.length}`);
   console.log(`Alerts: ${data.alerts.length}`);
-  console.log("");
-  console.log("─── Top Customers ────────────────────────────");
-  for (const c of data.customers.topByRevenue.slice(0, 5)) {
-    console.log(`  ${c.name.padEnd(32)} ${fmt(c.totalRevenue).padStart(15)}   ${c.outstanding > 0 ? "due " + fmt(c.outstanding) : ""}`);
-  }
-  console.log("");
-  console.log("─── Top Categories ───────────────────────────");
-  for (const c of data.expensesData.byCategory.slice(0, 5)) {
-    console.log(`  ${c.name.padEnd(32)} ${fmt(c.amount).padStart(15)}   ${c.pctOfTotal.toFixed(1)}%`);
-  }
   console.log("");
 }
 
