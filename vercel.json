@@ -1,12 +1,12 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/anomaly",
-      "schedule": "30 0 * * *"
-    },
-    {
-      "path": "/api/cron/zoho-aggregator",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+    "crons": [
+          {
+                  "path": "/api/cron/anomaly",
+                  "schedule": "30 0 * * *"
+          },
+          {
+                  "path": "/api/cron/zoho-aggregator",
+                  "schedule": "0 0 * * *"
+          }
+    ]
 }
