@@ -11,6 +11,7 @@
 
 import { cacheGet, cacheSet } from "@/lib/cache/redis";
 import { zohoFetch, zohoFetchAll } from "./client";
+import type { ZohoConnection } from "@/lib/db/schema";
 import type {
   ZohoBankAccount,
   ZohoBill,
@@ -35,8 +36,14 @@ import type {
   VendorSummary,
 } from "@/lib/dashboard/types";
 
-const CACHE_KEY = "zoho:aggregate";
 const CACHE_TTL_SEC = 5 * 60;
+
+function cacheKeyForConnection(conn: ZohoConnection) {
+  // Cache per (orgId, zohoOrgId) so two FinAI orgs (or two Zoho orgs from the
+  // same FinAI org) don't collide. Keyed off zohoOrgId since that's the real
+  // tenant boundary for the upstream data.
+  return `zoho:aggregate:${conn.orgId}:${conn.zohoOrgId}`;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Date helpers
@@ -331,7 +338,7 @@ function buildAlerts(expenses: ExpenseRecord[], invoices: InvoiceRecord[]): Anom
 // ─────────────────────────────────────────────────────────────────────────────
 // Main aggregator
 // ─────────────────────────────────────────────────────────────────────────────
-export async function buildZohoAggregate(): Promise<DashboardAggregate> {
+export async function buildZohoAggregate(conn: ZohoConnection): Promise<DashboardAggregate> {
   const now = new Date();
   const fyStart = fiscalYearStart(now);
   const monthStart = startOfMonth(now);
@@ -340,19 +347,20 @@ export async function buildZohoAggregate(): Promise<DashboardAggregate> {
 
   // ── Parallel fetches ─────────────────────────────────────────────────────
   const [orgInfo, allInvoices, allExpenses, openBills, banks, payments, accounts] = await Promise.all([
-    fetchOrg(),
-    zohoFetchAll<ZohoInvoice>("/invoices", "invoices", { query: { date_start: fmt(fyStart) } }, 10, 200),
-    zohoFetchAll<ZohoExpense>("/expenses", "expenses", { query: { date_start: fmt(fyStart) } }, 10, 200),
-    zohoFetchAll<ZohoBill>("/bills", "bills", { query: { status: "open" } }, 5, 200),
-    zohoFetchAll<ZohoBankAccount>("/bankaccounts", "bankaccounts", {}, 2, 200),
+    fetchOrg(conn),
+    zohoFetchAll<ZohoInvoice>(conn, "/invoices", "invoices", { query: { date_start: fmt(fyStart) } }, 10, 200),
+    zohoFetchAll<ZohoExpense>(conn, "/expenses", "expenses", { query: { date_start: fmt(fyStart) } }, 10, 200),
+    zohoFetchAll<ZohoBill>(conn, "/bills", "bills", { query: { status: "open" } }, 5, 200),
+    zohoFetchAll<ZohoBankAccount>(conn, "/bankaccounts", "bankaccounts", {}, 2, 200),
     zohoFetchAll<ZohoCustomerPayment>(
+      conn,
       "/customerpayments",
       "customerpayments",
       { query: { date_start: fmt(lastMonthStart) } },
       5,
       200,
     ),
-    zohoFetchAll<ZohoChartOfAccount>("/chartofaccounts", "chartofaccounts", {}, 5, 200),
+    zohoFetchAll<ZohoChartOfAccount>(conn, "/chartofaccounts", "chartofaccounts", {}, 5, 200),
   ]);
 
   // ── Build lookups ────────────────────────────────────────────────────────
@@ -414,8 +422,8 @@ export async function buildZohoAggregate(): Promise<DashboardAggregate> {
   const aggregate: DashboardAggregate = {
     generatedAt: now.toISOString(),
     org: {
-      id: orgInfo?.organization_id ?? process.env.ZOHO_ORG_ID ?? "",
-      name: orgInfo?.name ?? "AdvertOut",
+      id: orgInfo?.organization_id ?? conn.zohoOrgId,
+      name: orgInfo?.name ?? conn.zohoOrgName ?? "Zoho Books",
       gstin: orgInfo?.gstin ?? "",
       stateCode: orgInfo?.state_code ?? "",
       fiscalYearStart: "04-01",
@@ -506,10 +514,10 @@ export async function buildZohoAggregate(): Promise<DashboardAggregate> {
   return aggregate;
 }
 
-async function fetchOrg(): Promise<ZohoOrgInfo | null> {
+async function fetchOrg(conn: ZohoConnection): Promise<ZohoOrgInfo | null> {
   try {
-    const data = await zohoFetch<{ organizations: ZohoOrgInfo[] }>("/organizations", { skipOrgId: true });
-    return data.organizations?.[0] ?? null;
+    const data = await zohoFetch<{ organizations: ZohoOrgInfo[] }>(conn, "/organizations", { skipOrgId: true });
+    return data.organizations?.find((o) => o.organization_id === conn.zohoOrgId) ?? data.organizations?.[0] ?? null;
   } catch {
     return null;
   }
@@ -519,29 +527,21 @@ async function fetchOrg(): Promise<ZohoOrgInfo | null> {
 // Cached entry-points
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Read the cached aggregate. Returns null on a cache miss — callers can choose
- * to trigger a rebuild inline or fall back to the mock.
- */
-export async function getCachedAggregate(): Promise<DashboardAggregate | null> {
-  return cacheGet<DashboardAggregate>(CACHE_KEY);
+/** Read the cached aggregate for a connection (null on miss). */
+export async function getCachedAggregate(conn: ZohoConnection): Promise<DashboardAggregate | null> {
+  return cacheGet<DashboardAggregate>(cacheKeyForConnection(conn));
 }
 
-/**
- * Build + cache the aggregate. Called by the cron route every 5 min.
- */
-export async function refreshAggregate(): Promise<DashboardAggregate> {
-  const data = await buildZohoAggregate();
-  await cacheSet(CACHE_KEY, data, CACHE_TTL_SEC);
+/** Build + cache the aggregate for a single connection. */
+export async function refreshAggregate(conn: ZohoConnection): Promise<DashboardAggregate> {
+  const data = await buildZohoAggregate(conn);
+  await cacheSet(cacheKeyForConnection(conn), data, CACHE_TTL_SEC);
   return data;
 }
 
-/**
- * Read-or-build: returns cache if present, otherwise builds inline (slower
- * first call until cron warms the cache).
- */
-export async function getOrBuildAggregate(): Promise<DashboardAggregate> {
-  const cached = await getCachedAggregate();
+/** Read-or-build for a connection. */
+export async function getOrBuildAggregate(conn: ZohoConnection): Promise<DashboardAggregate> {
+  const cached = await getCachedAggregate(conn);
   if (cached) return cached;
-  return refreshAggregate();
+  return refreshAggregate(conn);
 }

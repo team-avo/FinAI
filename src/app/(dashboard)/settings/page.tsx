@@ -15,8 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { ShimmerSkeleton } from "@/components/effects/shimmer-skeleton";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { useEffect, Suspense } from "react";
-import { Monitor, Smartphone } from "lucide-react";
+import { useEffect, Suspense, useState } from "react";
+import { Monitor, Smartphone, Plug, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 
 const orgSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -58,6 +58,14 @@ export default function SettingsPage() {
 function SettingsPageInner() {
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get("tab") ?? "org";
+  const zohoConnected = searchParams.get("zoho_connected") === "1";
+  const zohoError = searchParams.get("zoho_error");
+
+  useEffect(() => {
+    if (zohoConnected) toast.success("Zoho Books connected");
+    if (zohoError) toast.error(`Zoho connect failed: ${zohoError}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const org = trpc.settings.org.useQuery();
   const coa = trpc.settings.coa.useQuery({ type: "all" });
@@ -116,6 +124,7 @@ function SettingsPageInner() {
           <TabsTrigger value="org">Organization</TabsTrigger>
           <TabsTrigger value="coa">Chart of Accounts</TabsTrigger>
           <TabsTrigger value="tax">Tax Rates</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
         </TabsList>
 
         {/* Profile Tab */}
@@ -362,6 +371,11 @@ function SettingsPageInner() {
           </Card>
         </TabsContent>
 
+        {/* Integrations Tab */}
+        <TabsContent value="integrations">
+          <IntegrationsTab />
+        </TabsContent>
+
         {/* Tax Rates Tab */}
         <TabsContent value="tax">
           <Card>
@@ -403,6 +417,102 @@ function SettingsPageInner() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function IntegrationsTab() {
+  const status = trpc.zoho.status.useQuery();
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  async function handleDisconnect() {
+    if (!confirm("Disconnect Zoho Books? Dashboard will fall back to FinAI's own data.")) return;
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/zoho/disconnect", { method: "POST" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      toast.success("Zoho Books disconnected");
+      status.refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Disconnect failed");
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plug className="h-4 w-4" />
+            Zoho Books
+          </CardTitle>
+          <CardDescription>
+            Pull live invoices, expenses, and bank balances from your Zoho Books org. Without
+            it, the dashboard shows data from FinAI's own ledger (built from AI tool calls).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {status.isLoading ? (
+            <ShimmerSkeleton className="h-16 rounded" />
+          ) : status.data?.connected ? (
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 rounded border border-positive/30 bg-positive/5 p-3">
+                <CheckCircle2 className="h-4 w-4 text-positive shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-1">
+                  <div className="text-[13px] text-fg">
+                    Connected to <span className="font-medium">{status.data.zohoOrgName ?? "Zoho org"}</span>
+                    {!status.data.ownConnection && (
+                      <span className="text-fg-muted"> (via a teammate)</span>
+                    )}
+                  </div>
+                  <div className="font-mono text-[11px] text-fg-muted">
+                    org_id: {status.data.zohoOrgId}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {status.data.ownConnection ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDisconnect}
+                    disabled={disconnecting}
+                  >
+                    {disconnecting ? "Disconnecting…" : "Disconnect"}
+                  </Button>
+                ) : (
+                  <Button size="sm" asChild>
+                    <a href="/api/zoho/connect">Connect with my Zoho account</a>
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 rounded border border-border bg-bg-muted/30 p-3">
+                <AlertCircle className="h-4 w-4 text-fg-muted shrink-0 mt-0.5" />
+                <div className="text-[13px] text-fg-muted">
+                  Not connected. The dashboard is reading from FinAI's local ledger.
+                </div>
+              </div>
+              <Button size="sm" asChild>
+                <a href="/api/zoho/connect" className="flex items-center gap-1.5">
+                  <Plug className="h-3.5 w-3.5" />
+                  Connect Zoho Books
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </Button>
+              <p className="text-[12px] text-fg-muted">
+                You'll be redirected to Zoho to authorise. We request{" "}
+                <code className="font-mono text-[11px]">ZohoBooks.fullaccess.all</code> so the
+                dashboard can fetch invoices, expenses, payments, and bank balances.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

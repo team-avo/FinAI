@@ -13,6 +13,7 @@ import { notificationsRouter } from "./routers/notifications";
 import { approvalsRouter } from "./routers/approvals";
 import { activityRouter } from "./routers/activity";
 import { briefingsRouter } from "./routers/briefings";
+import { zohoRouter } from "./routers/zoho";
 
 export const appRouter = router({
   contacts: contactsRouter,
@@ -29,6 +30,7 @@ export const appRouter = router({
   approvals: approvalsRouter,
   activity: activityRouter,
   briefings: briefingsRouter,
+  zoho: zohoRouter,
 });
 
 export type AppRouter = typeof appRouter;
