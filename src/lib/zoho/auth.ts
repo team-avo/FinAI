@@ -31,6 +31,15 @@ function accountsBaseUrl() {
   return "https://accounts.zoho.in";
 }
 
+/**
+ * In-flight deduplication: when multiple parallel calls (e.g. the 7 fetches
+ * in Promise.all inside buildZohoAggregate) all miss the cache simultaneously,
+ * only the first one triggers an OAuth refresh — the rest await the same
+ * Promise. Without this, 7 simultaneous token-refresh requests hit Zoho's
+ * OAuth endpoint and get rate-limited (HTTP 400 "too many requests").
+ */
+const inflightRefresh = new Map<string, Promise<string>>();
+
 export async function getZohoAccessToken(): Promise<string> {
   const refresh = process.env.ZOHO_REFRESH_TOKEN;
   const clientId = process.env.ZOHO_CLIENT_ID;
@@ -42,38 +51,52 @@ export async function getZohoAccessToken(): Promise<string> {
     );
   }
 
-  const cached = await cacheGet<CachedToken>(tokenCacheKey());
+  const cacheKey = tokenCacheKey();
+  const cached = await cacheGet<CachedToken>(cacheKey);
   if (cached?.accessToken) return cached.accessToken;
 
-  const params = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refresh,
-    client_id: clientId,
-    client_secret: clientSecret,
-  });
+  // If another parallel call is already refreshing, share that promise.
+  const inflight = inflightRefresh.get(cacheKey);
+  if (inflight) return inflight;
 
-  const res = await fetch(`${accountsBaseUrl()}/oauth/v2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
-  });
+  const refreshPromise = (async () => {
+    try {
+      const params = new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refresh,
+        client_id: clientId,
+        client_secret: clientSecret,
+      });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Zoho token refresh failed (${res.status}): ${text}`);
-  }
-  const data = (await res.json()) as ZohoTokenResponse & { error?: string };
-  if (data.error || !data.access_token) {
-    throw new Error(`Zoho token refresh error: ${data.error ?? "unknown"}`);
-  }
+      const res = await fetch(`${accountsBaseUrl()}/oauth/v2/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+      });
 
-  await cacheSet<CachedToken>(
-    tokenCacheKey(),
-    { accessToken: data.access_token, fetchedAt: Date.now() },
-    ACCESS_TOKEN_TTL_SEC,
-  );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Zoho token refresh failed (${res.status}): ${text}`);
+      }
+      const data = (await res.json()) as ZohoTokenResponse & { error?: string };
+      if (data.error || !data.access_token) {
+        throw new Error(`Zoho token refresh error: ${data.error ?? "unknown"}`);
+      }
 
-  return data.access_token;
+      await cacheSet<CachedToken>(
+        cacheKey,
+        { accessToken: data.access_token, fetchedAt: Date.now() },
+        ACCESS_TOKEN_TTL_SEC,
+      );
+
+      return data.access_token;
+    } finally {
+      inflightRefresh.delete(cacheKey);
+    }
+  })();
+
+  inflightRefresh.set(cacheKey, refreshPromise);
+  return refreshPromise;
 }
 
 /** Force a fresh access token (used when a 401 invalidates the cache). */
