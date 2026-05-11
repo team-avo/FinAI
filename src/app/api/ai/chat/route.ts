@@ -1,5 +1,5 @@
-import { streamText, convertToModelMessages } from "ai";
-import { google } from "@ai-sdk/google";
+import { streamText, convertToModelMessages, stepCountIs } from "ai";
+import { groq } from "@ai-sdk/groq";
 import { agentTools } from "@/lib/ai/tools";
 import { buildSystemPrompt } from "@/lib/ai/prompts/system";
 
@@ -11,11 +11,12 @@ export async function POST(req: Request) {
   const modelMessages = await convertToModelMessages(messages);
 
   const result = streamText({
-    model: google("gemini-2.0-flash"),
+    model: groq("llama-3.3-70b-versatile"),
     system: buildSystemPrompt(),
     messages: modelMessages,
     tools: agentTools,
     temperature: 0.1,
+    stopWhen: stepCountIs(5),
   });
 
   return result.toUIMessageStreamResponse();

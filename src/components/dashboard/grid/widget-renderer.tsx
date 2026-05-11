@@ -19,6 +19,7 @@ import {
   AIActivityWidget,
   AnomalyAlertsWidget,
   GstSummaryWidget,
+  MorningBriefingWidget,
 } from "@/components/dashboard/widgets/list-widgets";
 import type { WidgetId } from "@/lib/dashboard/widgets-registry";
 import type { DashboardAggregate } from "@/lib/dashboard/types";
@@ -60,6 +61,8 @@ export function WidgetRenderer({ type, data, editing, onRemove }: WidgetRenderer
       return <AnomalyAlertsWidget data={data} editing={editing} onRemove={onRemove} />;
     case "gst-summary":
       return <GstSummaryWidget data={data} editing={editing} onRemove={onRemove} />;
+    case "morning-briefing":
+      return <MorningBriefingWidget editing={editing} onRemove={onRemove} />;
     default:
       return null;
   }

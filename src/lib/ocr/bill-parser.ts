@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { google } from "@ai-sdk/google";
+import { groq } from "@ai-sdk/groq";
 
 export interface ParsedBill {
   vendorName?: string;
@@ -36,7 +36,7 @@ export async function parseBillFromBase64(
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif",
 ): Promise<ParsedBill> {
   const { text } = await generateText({
-    model: google("gemini-2.0-flash"),
+    model: groq("llama-3.3-70b-versatile"),
     system: SYSTEM_PROMPT,
     messages: [
       {

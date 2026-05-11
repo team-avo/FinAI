@@ -4,6 +4,8 @@ import { usePathname } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/command-palette";
+import { UserMenu } from "@/components/dashboard/user-menu";
+import { NotificationBell } from "@/components/dashboard/notification-bell";
 
 const ROUTE_LABELS: Record<string, string> = {
   "/": "Dashboard",
@@ -14,6 +16,9 @@ const ROUTE_LABELS: Record<string, string> = {
   "/reports": "Reports",
   "/chat": "AI Chat",
   "/settings": "Settings",
+  "/activity": "AI Activity",
+  "/notifications": "Notifications",
+  "/approvals": "Approvals",
 };
 
 function getBreadcrumb(pathname: string): string {
@@ -40,6 +45,9 @@ export function Topbar({ onOpenChat }: { onOpenChat?: () => void }) {
         >
           <MessageSquare className="h-4 w-4" />
         </Button>
+
+        <NotificationBell />
+        <UserMenu />
       </div>
     </header>
   );

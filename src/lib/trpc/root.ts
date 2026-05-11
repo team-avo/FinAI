@@ -9,6 +9,10 @@ import { settingsRouter } from "./routers/settings";
 import { paymentsRouter } from "./routers/payments";
 import { dashboardsRouter } from "./routers/dashboards";
 import { aggregateRouter } from "./routers/aggregate";
+import { notificationsRouter } from "./routers/notifications";
+import { approvalsRouter } from "./routers/approvals";
+import { activityRouter } from "./routers/activity";
+import { briefingsRouter } from "./routers/briefings";
 
 export const appRouter = router({
   contacts: contactsRouter,
@@ -21,6 +25,10 @@ export const appRouter = router({
   payments: paymentsRouter,
   dashboards: dashboardsRouter,
   aggregate: aggregateRouter,
+  notifications: notificationsRouter,
+  approvals: approvalsRouter,
+  activity: activityRouter,
+  briefings: briefingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

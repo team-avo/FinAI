@@ -17,6 +17,15 @@ function getMessageText(msg: UIMessage): string {
     .join("");
 }
 
+type ToolInvPart = { type: "tool-invocation"; toolInvocation: { toolName: string; toolCallId: string; state: "call" | "partial-call" | "result"; args: Record<string, unknown>; result?: unknown } };
+
+function getToolInvocations(msg: UIMessage) {
+  return msg.parts
+    .filter((p) => p.type === "tool-invocation")
+    .map((p) => (p as unknown as ToolInvPart).toolInvocation)
+    .filter((inv) => inv.state === "result" || inv.state === "call");
+}
+
 export function ChatDock({ open, onClose }: { open: boolean; onClose: () => void }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -127,6 +136,7 @@ export function ChatDock({ open, onClose }: { open: boolean; onClose: () => void
                 id: msg.id,
                 role: msg.role as "user" | "assistant",
                 content: getMessageText(msg),
+                toolInvocations: msg.role === "assistant" ? getToolInvocations(msg) : undefined,
               }}
             />
           ))}

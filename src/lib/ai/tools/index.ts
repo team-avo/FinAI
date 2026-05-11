@@ -10,6 +10,7 @@ import { summariseInvoiceTax, isInterstateSale, calculateLineGST } from "@/lib/a
 import { createId } from "@/lib/db/utils";
 import { formatINR } from "@/lib/utils";
 import { startOfMonth, endOfMonth } from "date-fns";
+import { logActivity } from "@/lib/trpc/routers/activity";
 
 const ORG_ID = "advertout";
 
@@ -74,7 +75,7 @@ export const agentTools = {
 
   getThisMonthPnL: tool({
     description: "Get P&L for the current month",
-    inputSchema: z.object({}),
+    inputSchema: z.preprocess((v) => v ?? {}, z.object({})),
     execute: async () => {
       const now = new Date();
       const report = await getPnLReport(ORG_ID, startOfMonth(now), endOfMonth(now));
@@ -89,7 +90,7 @@ export const agentTools = {
 
   getOutstandingInvoices: tool({
     description: "Get all unpaid/outstanding invoices",
-    inputSchema: z.object({}),
+    inputSchema: z.preprocess((v) => v ?? {}, z.object({})),
     execute: async () => {
       const summary = await getOutstandingReceivables(ORG_ID);
       return {
@@ -230,13 +231,25 @@ export const agentTools = {
         });
       }
 
-      return {
+      const result = {
         invoiceId: invoice.id,
         invoiceNumber,
         total: formatINR(summary.total),
         status: "draft",
         message: `Invoice ${invoiceNumber} created for ${input.contactName} — ${formatINR(summary.total)}`,
       };
+
+      logActivity({
+        orgId: ORG_ID,
+        actor: "ai_web",
+        action: "tool:createInvoice",
+        entityType: "invoice",
+        entityRef: invoiceNumber,
+        input: { contactName: input.contactName, lineCount: input.lines.length },
+        output: { invoiceId: invoice.id, total: summary.total },
+      }).catch(() => {});
+
+      return result;
     },
   }),
 
@@ -285,12 +298,24 @@ export const agentTools = {
         });
       }
 
-      return {
+      const result = {
         expenseId: expense.id,
         vendorName: input.vendorName,
         amount: formatINR(totalAmount),
         message: `Expense of ${formatINR(totalAmount)} recorded${input.vendorName ? ` for ${input.vendorName}` : ""}`,
       };
+
+      logActivity({
+        orgId: ORG_ID,
+        actor: "ai_web",
+        action: "tool:recordExpense",
+        entityType: "expense",
+        entityRef: expense.id,
+        input: { vendorName: input.vendorName, amount: input.amount, category: input.categoryDescription },
+        output: { expenseId: expense.id, total: totalAmount },
+      }).catch(() => {});
+
+      return result;
     },
   }),
 
@@ -308,6 +333,16 @@ export const agentTools = {
         .insert(vendorCategories)
         .values({ orgId: ORG_ID, vendorPattern: input.vendorPattern, accountId })
         .onConflictDoNothing();
+
+      logActivity({
+        orgId: ORG_ID,
+        actor: "ai_web",
+        action: "tool:learnVendorCategory",
+        entityType: "vendor_category",
+        entityRef: input.vendorPattern,
+        input: { vendorPattern: input.vendorPattern, accountCode: input.accountCode },
+        output: { accountId },
+      }).catch(() => {});
 
       return `Learned: ${input.vendorPattern} → account ${input.accountCode}`;
     },

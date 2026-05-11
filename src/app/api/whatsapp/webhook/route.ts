@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature, sendTextMessage } from "@/lib/whatsapp/client";
 import { streamText } from "ai";
 import { google } from "@ai-sdk/google";
-import { agentTools } from "@/lib/ai/tools";
+import { agentToolsWhatsApp } from "@/lib/ai/tools/whatsapp";
 import { buildSystemPrompt } from "@/lib/ai/prompts/system";
 import { db } from "@/lib/db/client";
 import { aiConversations, aiMessages } from "@/lib/db/schema";
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
       model: google("gemini-2.0-flash"),
       system: buildSystemPrompt(),
       messages: history,
-      tools: agentTools,
+      tools: agentToolsWhatsApp,
       temperature: 0.1,
     });
 

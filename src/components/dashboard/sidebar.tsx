@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Zap } from "lucide-react";
+import { Home, Zap, Activity, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -13,7 +13,11 @@ import {
 
 // Phase 1B: Dashboard-only sidebar. Other surfaces are temporarily hidden
 // while the Zoho integration is built — re-introduce as features ship.
-const NAV = [{ href: "/dashboard", icon: Home, label: "Dashboard" }];
+const NAV = [
+  { href: "/dashboard", icon: Home, label: "Dashboard" },
+  { href: "/activity", icon: Activity, label: "AI Activity" },
+  { href: "/approvals", icon: ClipboardList, label: "Approvals" },
+];
 
 export function Sidebar() {
   const pathname = usePathname();
