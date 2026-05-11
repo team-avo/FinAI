@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chartOfAccounts, organizations, taxRates } from "@/lib/db/schema";
+import { chartOfAccounts, organizations, taxRates, users, sessions } from "@/lib/db/schema";
 import { router, protectedProcedure } from "../init";
+import { auth } from "@/lib/auth";
 
 export const settingsRouter = router({
   org: protectedProcedure.query(async ({ ctx }) => {
@@ -89,5 +90,58 @@ export const settingsRouter = router({
         ),
       )
       .orderBy(chartOfAccounts.code);
+  }),
+
+  profile: protectedProcedure.query(async ({ ctx }) => {
+    const [user] = await db
+      .select({ id: users.id, name: users.name, email: users.email, createdAt: users.createdAt })
+      .from(users)
+      .where(eq(users.id, ctx.userId))
+      .limit(1);
+    return user ?? null;
+  }),
+
+  updateProfile: protectedProcedure
+    .input(z.object({ name: z.string().min(1, "Name is required") }))
+    .mutation(async ({ ctx, input }) => {
+      const [user] = await db
+        .update(users)
+        .set({ name: input.name, updatedAt: new Date() })
+        .where(eq(users.id, ctx.userId))
+        .returning({ id: users.id, name: users.name, email: users.email });
+      return user;
+    }),
+
+  changePassword: protectedProcedure
+    .input(
+      z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8, "Password must be at least 8 characters"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await auth.api.changePassword({
+        body: {
+          currentPassword: input.currentPassword,
+          newPassword: input.newPassword,
+          revokeOtherSessions: false,
+        },
+        headers: new Headers(),
+      });
+      return { ok: true };
+    }),
+
+  activeSessions: protectedProcedure.query(async ({ ctx }) => {
+    return db
+      .select({
+        id: sessions.id,
+        ipAddress: sessions.ipAddress,
+        userAgent: sessions.userAgent,
+        createdAt: sessions.createdAt,
+        expiresAt: sessions.expiresAt,
+      })
+      .from(sessions)
+      .where(eq(sessions.userId, ctx.userId))
+      .orderBy(sessions.createdAt);
   }),
 });

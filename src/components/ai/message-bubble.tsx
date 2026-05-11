@@ -1,15 +1,38 @@
 "use client";
 
-import { Bot, User } from "lucide-react";
+import { Bot, User, CheckCircle2, FileText, Receipt, TrendingUp, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+export interface ToolInvocationPart {
+  type: "tool-invocation";
+  toolInvocation: {
+    toolName: string;
+    toolCallId: string;
+    state: "call" | "partial-call" | "result";
+    args: Record<string, unknown>;
+    result?: unknown;
+  };
+}
 
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  toolCalls?: Array<{ name: string; args: Record<string, unknown>; result?: unknown }>;
+  toolInvocations?: ToolInvocationPart["toolInvocation"][];
   createdAt?: Date;
 }
+
+const TOOL_META: Record<string, { icon: React.ComponentType<{ className?: string }>; label: string }> = {
+  createInvoice: { icon: FileText, label: "Created invoice" },
+  recordExpense: { icon: Receipt, label: "Recorded expense" },
+  getPnL: { icon: TrendingUp, label: "P&L report" },
+  getThisMonthPnL: { icon: TrendingUp, label: "Monthly P&L" },
+  getOutstandingInvoices: { icon: FileText, label: "Outstanding invoices" },
+  getExpenseBreakdown: { icon: Receipt, label: "Expense breakdown" },
+  findContact: { icon: Search, label: "Contact search" },
+  getRecentInvoices: { icon: FileText, label: "Recent invoices" },
+  learnVendorCategory: { icon: CheckCircle2, label: "Vendor category saved" },
+};
 
 export function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
@@ -30,6 +53,10 @@ export function MessageBubble({ message }: { message: Message }) {
       </div>
 
       <div className={cn("flex flex-col gap-1.5 max-w-[85%]", isUser && "items-end")}>
+        {message.toolInvocations?.map((inv, i) => (
+          <ToolResultCard key={i} inv={inv} />
+        ))}
+
         {message.content && (
           <div
             className={cn(
@@ -42,31 +69,50 @@ export function MessageBubble({ message }: { message: Message }) {
             <p className="whitespace-pre-wrap">{message.content}</p>
           </div>
         )}
-
-        {message.toolCalls?.map((tool, i) => (
-          <ToolCallCard key={i} tool={tool} />
-        ))}
       </div>
     </div>
   );
 }
 
-function ToolCallCard({
-  tool,
-}: {
-  tool: { name: string; args: Record<string, unknown>; result?: unknown };
-}) {
+function ToolResultCard({ inv }: { inv: ToolInvocationPart["toolInvocation"] }) {
+  const meta = TOOL_META[inv.toolName];
+  const Icon = meta?.icon ?? CheckCircle2;
+  const label = meta?.label ?? inv.toolName;
+  const isDone = inv.state === "result";
+  const result = inv.result as Record<string, unknown> | string | undefined;
+
+  // Extract a human-readable summary from the result
+  let summary: string | null = null;
+  if (result) {
+    if (typeof result === "string") {
+      summary = result.slice(0, 100);
+    } else if (typeof result === "object") {
+      if ("message" in result && typeof result.message === "string") {
+        summary = result.message;
+      } else if ("invoiceNumber" in result) {
+        summary = `Invoice ${result.invoiceNumber} — ${result.total}`;
+      } else if ("totalRevenue" in result) {
+        summary = `Revenue ${result.totalRevenue} · Expenses ${result.totalExpenses} · Net ${result.netProfit}`;
+      } else if ("totalOutstanding" in result) {
+        summary = `${result.totalOutstanding} outstanding`;
+      }
+    }
+  }
+
   return (
-    <div className="rounded border border-border bg-bg-subtle px-3 py-2 text-[12px] font-mono">
-      <div className="flex items-center gap-1.5 text-accent mb-1">
-        <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-        <span className="font-medium">{tool.name}</span>
+    <div className={cn(
+      "flex items-start gap-2 rounded border px-3 py-2 text-[12px]",
+      isDone
+        ? "bg-positive/5 border-positive/20 text-fg"
+        : "bg-accent/5 border-accent/20 text-fg-muted",
+    )}>
+      <Icon className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", isDone ? "text-positive" : "text-accent animate-pulse")} />
+      <div className="min-w-0">
+        <p className="font-medium">{label}</p>
+        {summary && (
+          <p className="text-fg-muted mt-0.5 truncate">{summary}</p>
+        )}
       </div>
-      {tool.result !== undefined && (
-        <div className="text-fg-muted mt-1 truncate">
-          ✓ {typeof tool.result === "string" ? tool.result : JSON.stringify(tool.result).slice(0, 80)}
-        </div>
-      )}
     </div>
   );
 }

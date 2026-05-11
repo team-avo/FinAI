@@ -12,7 +12,11 @@ import {
   CheckCircle2,
   Clock,
   RotateCcw,
+  Sun,
+  ArrowRight,
 } from "lucide-react";
+import { trpc } from "@/lib/trpc/client";
+import type { BriefingContent } from "@/lib/trpc/routers/briefings";
 import { WidgetCard } from "@/components/dashboard/grid/widget-card";
 import { DrillDownModal, useDrillStack } from "./drill-down-modal";
 import { formatINR, cn } from "@/lib/utils";
@@ -557,4 +561,74 @@ function invStatusClass(status: InvoiceRecord["status"]) {
     default:
       return "text-fg-muted";
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Morning Briefing
+// ─────────────────────────────────────────────────────────────────────────────
+export function MorningBriefingWidget({ editing, onRemove }: { editing?: boolean; onRemove?: () => void }) {
+  const { data: briefing, isLoading } = trpc.briefings.latest.useQuery();
+  const content = briefing?.content as BriefingContent | undefined;
+
+  return (
+    <WidgetCard
+      title="Morning Briefing"
+      subtitle={briefing ? new Date(briefing.generatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "No briefing yet"}
+      icon={<Sun className="h-3.5 w-3.5" />}
+      editing={editing}
+      onRemove={onRemove}
+    >
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-4 bg-bg-subtle rounded animate-pulse" />
+          ))}
+        </div>
+      ) : !content ? (
+        <div className="flex flex-col items-center justify-center py-6 text-fg-muted">
+          <Sun className="h-6 w-6 opacity-30 mb-1.5" />
+          <p className="text-[12px]">No briefing yet</p>
+          <p className="text-[11px] opacity-60 mt-0.5">Generated daily at 9 AM</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {content.greeting && (
+            <p className="text-[12px] text-fg-muted italic">{content.greeting}</p>
+          )}
+          {content.headline && (
+            <p className="text-[13px] font-semibold text-fg">{content.headline}</p>
+          )}
+          {content.topConcerns?.length > 0 && (
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-fg-subtle mb-1">Concerns</p>
+              <ul className="space-y-1">
+                {content.topConcerns.map((c, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-[12px] text-fg-muted">
+                    <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0 mt-0.5" />
+                    {c}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {content.suggestedActions?.length > 0 && (
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-fg-subtle mb-1">Actions</p>
+              <ul className="space-y-1">
+                {content.suggestedActions.map((a, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-[12px] text-fg">
+                    <ArrowRight className="h-3 w-3 text-accent shrink-0 mt-0.5" />
+                    {a}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {content.cashPosition && (
+            <p className="text-[11px] text-fg-muted border-t border-border pt-2">{content.cashPosition}</p>
+          )}
+        </div>
+      )}
+    </WidgetCard>
+  );
 }

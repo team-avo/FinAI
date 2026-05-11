@@ -11,6 +11,7 @@ import {
   PieChart,
   Receipt,
   Sparkles,
+  Sun,
   TrendingDown,
   TrendingUp,
   Users,
@@ -32,7 +33,8 @@ export type WidgetId =
   | "recent-expenses"
   | "ai-activity"
   | "anomaly-alerts"
-  | "gst-summary";
+  | "gst-summary"
+  | "morning-briefing";
 
 export interface WidgetDef {
   id: WidgetId;
@@ -170,6 +172,15 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDef> = {
     icon: Wallet,
     defaultSize: { w: 4, h: 3 },
     minSize: { w: 3, h: 2 },
+  },
+  "morning-briefing": {
+    id: "morning-briefing",
+    category: "alerts",
+    label: "Morning Briefing",
+    description: "Daily AI-generated financial digest with key actions",
+    icon: Sun,
+    defaultSize: { w: 6, h: 4 },
+    minSize: { w: 4, h: 3 },
   },
 };
 
