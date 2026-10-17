@@ -36,7 +36,7 @@ export async function parseBillFromBase64(
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif",
 ): Promise<ParsedBill> {
   const { text } = await generateText({
-    model: groq("llama-3.3-70b-versatile"),
+    model: groq("openai/gpt-oss-120b"),
     system: SYSTEM_PROMPT,
     messages: [
       {
