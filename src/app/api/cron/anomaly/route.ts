@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
     .join("\n");
 
   const { text: insight } = await generateText({
-    model: groq("llama-3.3-70b-versatile"),
+    model: groq("openai/gpt-oss-120b"),
     system: `You are FinAI, an AI accounting assistant for AdvertOut, a digital marketing agency in India.
 Today is ${format(now, "dd MMMM yyyy")}.
 Be concise, professional, and actionable. Format numbers in Indian system (₹1,00,000). Max 3 sentences per anomaly.`,

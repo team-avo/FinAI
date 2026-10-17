@@ -59,7 +59,7 @@ Overdue: ₹${receivables.totalOverdue.toLocaleString("en-IN")} (${receivables.o
 `.trim();
 
   const { object: content } = await generateObject({
-    model: groq("llama-3.3-70b-versatile"),
+    model: groq("openai/gpt-oss-120b"),
     schema: briefingSchema,
     system: `You are FinAI, the AI accounting assistant for AdvertOut, a digital marketing agency in India.
 Generate a concise morning financial briefing. Be direct, professional, and actionable.
