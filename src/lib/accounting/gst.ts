@@ -146,6 +146,98 @@ export function summariseInvoiceTax(
   };
 }
 
+/** Standard GST slabs (%) recognised when validating a proposed tax amount. */
+export const GST_SLABS = [0, 5, 12, 18, 28] as const;
+
+export interface ExpenseGstProposal {
+  amount: number; // taxable base, before tax
+  cgst: number;
+  sgst: number;
+  igst: number;
+}
+
+export interface NormalizedExpenseGst {
+  cgst: number;
+  sgst: number;
+  igst: number;
+  taxAmount: number;
+  gstRate: number;
+  isInterstate: boolean;
+}
+
+/**
+ * Deterministically validate and recompute an expense's GST split.
+ *
+ * The LLM/OCR proposes absolute CGST/SGST/IGST amounts; we never post those
+ * directly. We infer the tax type from which buckets are non-zero, snap the
+ * implied rate to a standard GST slab, and recompute the split in code so the
+ * posted figures are correct by construction. Throws when the proposal cannot
+ * be reconciled to a valid slab/structure — the caller surfaces that for the
+ * user / a reviewer instead of writing wrong numbers to the ledger.
+ */
+export function normalizeExpenseGst(p: ExpenseGstProposal): NormalizedExpenseGst {
+  const amount = round2(p.amount);
+  const cgst = round2(Math.max(0, p.cgst));
+  const sgst = round2(Math.max(0, p.sgst));
+  const igst = round2(Math.max(0, p.igst));
+  const taxProposed = round2(cgst + sgst + igst);
+
+  if (!(amount > 0)) {
+    throw new Error("Expense base amount must be greater than zero.");
+  }
+
+  const hasIntra = cgst > 0 || sgst > 0;
+  const hasInter = igst > 0;
+  if (hasIntra && hasInter) {
+    throw new Error(
+      "GST is ambiguous: an expense can't carry both CGST/SGST and IGST. Confirm whether this was an in-state or inter-state purchase.",
+    );
+  }
+  if (hasIntra && Math.abs(cgst - sgst) > taxTolerance(amount)) {
+    throw new Error(
+      `CGST (₹${cgst}) and SGST (₹${sgst}) must be equal for an in-state purchase. Please recheck the tax on the bill.`,
+    );
+  }
+
+  const isInterstate = hasInter;
+  const slab = matchSlab(amount, taxProposed);
+  if (slab === null) {
+    const impliedRate = taxProposed === 0 ? 0 : round2((taxProposed / amount) * 100);
+    throw new Error(
+      `Tax of ₹${taxProposed} on ₹${amount} implies a ${impliedRate}% rate, which isn't a standard GST slab (0/5/12/18/28%). Please confirm the amount and tax.`,
+    );
+  }
+
+  const g = calculateGST(amount, slab, isInterstate);
+  return {
+    cgst: g.cgst,
+    sgst: g.sgst,
+    igst: g.igst,
+    taxAmount: g.totalTax,
+    gstRate: slab,
+    isInterstate,
+  };
+}
+
+/** Rounding slack allowed when matching a proposed tax to a slab: ₹1 or 0.5%. */
+function taxTolerance(amount: number): number {
+  return Math.max(1, round2(amount * 0.005));
+}
+
+/** Pick the slab whose computed tax is closest to the proposal, within slack. */
+function matchSlab(amount: number, taxProposed: number): number | null {
+  let best: number | null = null;
+  let bestDiff = Infinity;
+  for (const s of GST_SLABS) {
+    const diff = Math.abs(round2(amount * (s / 100)) - taxProposed);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = s;
+    }
+  }
+  return best !== null && bestDiff <= taxTolerance(amount) ? best : null;
+}
+
 function round2(v: number): number {
   return Math.round((v + Number.EPSILON) * 100) / 100;
 }
