@@ -24,16 +24,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("OCR error:", error);
-    const body: Record<string, unknown> = { error: "OCR processing failed" };
-    // Temporary, gated diagnostic (?diag=1) to root-cause a prod failure.
-    if (req.nextUrl.searchParams.get("diag") === "1") {
-      body.detail = String(error).slice(0, 400);
-      body.env = {
-        GOOGLE_GENERATIVE_AI_API_KEY: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-        GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
-        GOOGLE_API_KEY: !!process.env.GOOGLE_API_KEY,
-      };
-    }
-    return NextResponse.json(body, { status: 500 });
+    return NextResponse.json({ error: "OCR processing failed" }, { status: 500 });
   }
 }

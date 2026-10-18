@@ -38,7 +38,7 @@ export async function parseBillFromBase64(
   const { text } = await generateText({
     // Gemini is multimodal; Groq's gpt-oss models are text-only and can't read
     // the image at all (they'd hallucinate), so bill OCR must use a vision model.
-    model: google("gemini-2.0-flash"),
+    model: google("gemini-3.8-flash"),
     system: SYSTEM_PROMPT,
     messages: [
       {
