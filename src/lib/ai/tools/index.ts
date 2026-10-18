@@ -6,7 +6,7 @@ import { eq, and, ilike, or, desc } from "drizzle-orm";
 import { getPnLReport } from "@/lib/accounting/reports/pnl";
 import { getOutstandingReceivables, getExpenseBreakdown } from "@/lib/accounting/reports/outstanding";
 import { postInvoice, postExpense, getAccountByCode } from "@/lib/accounting/journal";
-import { summariseInvoiceTax, isInterstateSale, calculateLineGST } from "@/lib/accounting/gst";
+import { summariseInvoiceTax, isInterstateSale, calculateLineGST, normalizeExpenseGst } from "@/lib/accounting/gst";
 import { createId } from "@/lib/db/utils";
 import { formatINR } from "@/lib/utils";
 import { startOfMonth, endOfMonth } from "date-fns";
@@ -262,8 +262,16 @@ export const agentTools = {
         return "Could not determine expense category. Please create the expense manually.";
       }
 
-      const taxAmount = input.cgst + input.sgst + input.igst;
-      const totalAmount = input.amount + taxAmount;
+      // Never post the model's raw tax split — recompute it deterministically.
+      // Throws on an unreconcilable split so the caller can ask for a correction
+      // (and, on the approval path, roll back) rather than booking wrong GST.
+      const gst = normalizeExpenseGst({
+        amount: input.amount,
+        cgst: input.cgst,
+        sgst: input.sgst,
+        igst: input.igst,
+      });
+      const totalAmount = Math.round((input.amount + gst.taxAmount) * 100) / 100;
 
       const [expense] = await db
         .insert(expenses)
@@ -273,7 +281,7 @@ export const agentTools = {
           vendorName: input.vendorName,
           accountId,
           amount: String(input.amount),
-          taxAmount: String(taxAmount),
+          taxAmount: String(gst.taxAmount),
           totalAmount: String(totalAmount),
           notes: input.notes,
           source: "whatsapp",
@@ -288,9 +296,9 @@ export const agentTools = {
           expenseId: expense.id,
           date: expense.date,
           amount: input.amount,
-          cgst: input.cgst,
-          sgst: input.sgst,
-          igst: input.igst,
+          cgst: gst.cgst,
+          sgst: gst.sgst,
+          igst: gst.igst,
           total: totalAmount,
           expenseAccountId: accountId,
           description: input.vendorName ?? input.notes ?? "Expense",
