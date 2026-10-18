@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
       : userText;
 
     const result = await streamText({
-      model: google("gemini-2.0-flash"),
+      model: google("gemini-3.8-flash"),
       system: buildSystemPrompt(),
       messages: [...priorMessages, { role: "user", content: currentContent }],
       tools: agentToolsWhatsApp,
