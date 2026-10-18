@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyWebhookSignature, sendTextMessage } from "@/lib/whatsapp/client";
+import { verifyWebhookSignature, sendTextMessage, downloadMedia } from "@/lib/whatsapp/client";
 import { streamText } from "ai";
 import { google } from "@ai-sdk/google";
 import { agentToolsWhatsApp } from "@/lib/ai/tools/whatsapp";
@@ -44,11 +44,39 @@ export async function POST(req: NextRequest) {
     const from = message.from as string;
     const msgType = message.type as string;
     let userText = "";
+    let imageDataUrl: string | null = null;
 
     if (msgType === "text") {
       userText = message.text?.body ?? "";
     } else if (msgType === "image" || msgType === "document") {
-      userText = `[User sent a ${msgType}] Please parse this bill/receipt and help record it as an expense.`;
+      const media = msgType === "image" ? message.image : message.document;
+      const mediaId = media?.id as string | undefined;
+      const mimeType = (media?.mime_type as string | undefined) ?? "";
+      const caption = (media?.caption as string | undefined) ?? "";
+
+      // The vision path reads photos (JPG/PNG/WEBP). PDFs/other files aren't
+      // parsed yet — ask for a photo rather than silently doing nothing.
+      if (!mediaId || !mimeType.startsWith("image/")) {
+        await sendTextMessage({
+          to: from,
+          text: "Please send the bill as a photo (JPG or PNG) and I'll read it and record the expense.",
+        });
+        return NextResponse.json({ status: "ok" });
+      }
+
+      try {
+        // Fetch inside the ~5-minute media-URL window — never defer this.
+        const buffer = await downloadMedia(mediaId);
+        imageDataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+        userText = caption ? `[Sent a bill photo] ${caption}` : "[Sent a bill photo]";
+      } catch (err) {
+        console.error("WhatsApp media download failed:", err);
+        await sendTextMessage({
+          to: from,
+          text: "I couldn't download that image — please try sending it again.",
+        });
+        return NextResponse.json({ status: "ok" });
+      }
     } else {
       return NextResponse.json({ status: "ok" });
     }
@@ -82,17 +110,29 @@ export async function POST(req: NextRequest) {
       content: userText,
     });
 
-    const history = recentMessages.map((m) => ({
+    const priorMessages = recentMessages.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
     }));
 
-    history.push({ role: "user", content: userText });
+    // When a photo was sent, carry it as an image part so the multimodal model
+    // reads the bill and calls recordExpense directly (deterministic GST +
+    // the ₹5,000 approval gate still apply downstream).
+    const currentContent = imageDataUrl
+      ? [
+          {
+            type: "text" as const,
+            text:
+              "I'm sending a bill/receipt photo. Read it and record it as an expense: extract the vendor, date, base amount and GST (CGST/SGST/IGST). If the photo is unclear or a field is missing, ask me instead of guessing.",
+          },
+          { type: "image" as const, image: imageDataUrl },
+        ]
+      : userText;
 
     const result = await streamText({
       model: google("gemini-2.0-flash"),
       system: buildSystemPrompt(),
-      messages: history,
+      messages: [...priorMessages, { role: "user", content: currentContent }],
       tools: agentToolsWhatsApp,
       temperature: 0.1,
     });
