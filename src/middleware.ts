@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 // Paths that never require auth
 const PUBLIC_PATHS = [
   "/login",
+  "/explainer",
   "/api/auth",
   "/api/trpc",
   "/api/whatsapp",
