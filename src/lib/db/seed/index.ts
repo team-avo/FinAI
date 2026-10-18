@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chartOfAccounts, memberships, organizations, taxRates, vendorCategories } from "@/lib/db/schema";
 import { createId } from "@/lib/db/utils";
@@ -60,6 +61,40 @@ export async function seedOrg(orgId: string) {
   }
 
   return { codeToId };
+}
+
+/**
+ * Idempotent guarantee that `orgId` exists and has a chart of accounts.
+ * Safe to run on every deploy: it creates the org if missing and seeds the
+ * chart ONLY when the org has zero accounts, so it never duplicates the CoA
+ * (unlike seedOrg, which inserts unconditionally). When the chart is empty the
+ * tax rates and vendor rules are necessarily empty too — AI vendor-learning
+ * can't write rows without existing accounts — so seedOrg is safe to call.
+ */
+export async function ensureOrgSeeded(orgId = "advertout") {
+  await db
+    .insert(organizations)
+    .values({
+      id: orgId,
+      name: "AdvertOut",
+      gstin: "",
+      currency: "INR",
+      fiscalYearStart: "04-01",
+    })
+    .onConflictDoNothing();
+
+  const existing = await db
+    .select({ id: chartOfAccounts.id })
+    .from(chartOfAccounts)
+    .where(eq(chartOfAccounts.orgId, orgId))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await seedOrg(orgId);
+    console.log(`✓ ensureOrgSeeded: seeded chart of accounts for "${orgId}"`);
+  } else {
+    console.log(`✓ ensureOrgSeeded: "${orgId}" already has a chart — skipping`);
+  }
 }
 
 /**
