@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { groq } from "@ai-sdk/groq";
+import { google } from "@ai-sdk/google";
 
 export interface ParsedBill {
   vendorName?: string;
@@ -36,7 +36,9 @@ export async function parseBillFromBase64(
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif",
 ): Promise<ParsedBill> {
   const { text } = await generateText({
-    model: groq("openai/gpt-oss-120b"),
+    // Gemini is multimodal; Groq's gpt-oss models are text-only and can't read
+    // the image at all (they'd hallucinate), so bill OCR must use a vision model.
+    model: google("gemini-2.0-flash"),
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -56,7 +58,13 @@ export async function parseBillFromBase64(
   });
 
   try {
-    const parsed = JSON.parse(text.trim());
+    // Strip markdown code fences the model may add despite instructions.
+    const cleaned = text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+    const parsed = JSON.parse(cleaned);
     return {
       vendorName: parsed.vendorName,
       date: parsed.date,
