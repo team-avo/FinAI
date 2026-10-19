@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature, sendTextMessage, downloadMedia } from "@/lib/whatsapp/client";
+import { transcribeAudio } from "@/lib/whatsapp/transcribe";
 import { streamText } from "ai";
 import { google } from "@ai-sdk/google";
 import { agentToolsWhatsApp } from "@/lib/ai/tools/whatsapp";
@@ -74,6 +75,33 @@ export async function POST(req: NextRequest) {
         await sendTextMessage({
           to: from,
           text: "I couldn't download that image — please try sending it again.",
+        });
+        return NextResponse.json({ status: "ok" });
+      }
+    } else if (msgType === "audio" || msgType === "voice") {
+      const media = message.audio ?? message.voice;
+      const mediaId = media?.id as string | undefined;
+      const mimeType = (media?.mime_type as string | undefined) ?? "audio/ogg";
+      if (!mediaId) return NextResponse.json({ status: "ok" });
+
+      try {
+        // Download within the media-URL window, then transcribe (Hindi/Hinglish
+        // auto-detected) and feed the text through the normal agent pipeline.
+        const buffer = await downloadMedia(mediaId);
+        const transcript = await transcribeAudio(buffer, mimeType);
+        if (!transcript) {
+          await sendTextMessage({
+            to: from,
+            text: "I couldn't make out that voice note — could you type it or try again?",
+          });
+          return NextResponse.json({ status: "ok" });
+        }
+        userText = transcript;
+      } catch (err) {
+        console.error("WhatsApp audio transcription failed:", err);
+        await sendTextMessage({
+          to: from,
+          text: "I had trouble with that voice note — please try again or type it.",
         });
         return NextResponse.json({ status: "ok" });
       }
