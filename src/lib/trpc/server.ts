@@ -5,6 +5,6 @@ import type { Context } from "./context";
 
 const createCaller = createCallerFactory(appRouter);
 
-export function createServerCaller(ctx: Context = { orgId: "advertout", userId: null }) {
+export function createServerCaller(ctx: Context = { orgId: "advertout", userId: null, role: null }) {
   return createCaller(ctx);
 }
