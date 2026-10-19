@@ -3,9 +3,8 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { approvalQueue } from "@/lib/db/schema";
 import { router, protectedProcedure } from "../init";
-import { createId } from "@/lib/db/utils";
 import { logActivity } from "./activity";
-import { agentTools } from "@/lib/ai/tools";
+import { postExpenseRecord } from "@/lib/ai/tools";
 
 // Shape of an "expense_record" approval payload (mirrors the recordExpense tool
 // input; validated before we post so a malformed row can't corrupt the ledger).
@@ -29,9 +28,8 @@ async function executeApproval(
 ): Promise<unknown> {
   if (row.type === "expense_record") {
     const parsed = expensePayloadSchema.parse(row.payload);
-    const exec = agentTools.recordExpense.execute;
-    if (!exec) throw new Error("recordExpense executor unavailable");
-    return exec(parsed as never, {} as never);
+    // Post-only primitive (no routing) so approving never re-queues the item.
+    return postExpenseRecord(parsed);
   }
   // Other approval types are not auto-posted yet; approving records the decision.
   return null;
@@ -177,19 +175,3 @@ export const approvalsRouter = router({
       return row;
     }),
 });
-
-// ─── Shared helper ─────────────────────────────────────────────────────────────
-export async function enqueueApproval(opts: {
-  orgId: string;
-  type: typeof approvalQueue.$inferInsert["type"];
-  payload: Record<string, unknown>;
-  confidence?: number;
-  sourceChannel?: typeof approvalQueue.$inferInsert["sourceChannel"];
-  notificationId?: string;
-}) {
-  const [row] = await db
-    .insert(approvalQueue)
-    .values({ id: createId(), confidence: 0, ...opts })
-    .returning();
-  return row;
-}
