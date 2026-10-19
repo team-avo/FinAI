@@ -11,6 +11,7 @@ import { dashboardsRouter } from "./routers/dashboards";
 import { aggregateRouter } from "./routers/aggregate";
 import { notificationsRouter } from "./routers/notifications";
 import { approvalsRouter } from "./routers/approvals";
+import { membersRouter } from "./routers/members";
 import { activityRouter } from "./routers/activity";
 import { briefingsRouter } from "./routers/briefings";
 import { zohoRouter } from "./routers/zoho";
@@ -28,6 +29,7 @@ export const appRouter = router({
   aggregate: aggregateRouter,
   notifications: notificationsRouter,
   approvals: approvalsRouter,
+  members: membersRouter,
   activity: activityRouter,
   briefings: briefingsRouter,
   zoho: zohoRouter,
