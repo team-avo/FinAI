@@ -11,6 +11,7 @@ import { createId } from "@/lib/db/utils";
 import { formatINR } from "@/lib/utils";
 import { startOfMonth, endOfMonth } from "date-fns";
 import { logActivity } from "@/lib/trpc/routers/activity";
+import { enqueueApproval } from "@/lib/approvals/enqueue";
 
 const ORG_ID = "advertout";
 
@@ -42,7 +43,7 @@ const createInvoiceParams = z.object({
 });
 
 const recordExpenseParams = z.object({
-  date: z.string().describe("Date in YYYY-MM-DD format, defaults to today"),
+  date: z.string().optional().describe("Date in YYYY-MM-DD format, defaults to today"),
   vendorName: z.string().optional().describe("Vendor or merchant name"),
   categoryDescription: z.string().describe("Description of the expense category (e.g. 'food', 'travel', 'software subscription')"),
   amount: z.number().positive().describe("Base amount before tax in INR"),
@@ -50,12 +51,158 @@ const recordExpenseParams = z.object({
   sgst: z.number().min(0).describe("SGST amount"),
   igst: z.number().min(0).describe("IGST amount"),
   notes: z.string().optional(),
+  confidence: z
+    .enum(["high", "medium", "low"])
+    .optional()
+    .describe("How sure you are about the extracted fields. Use 'low' when the bill/voice was unclear or you guessed — low-confidence items are routed to human review."),
 });
 
 const getRecentInvoicesParams = z.object({
   limit: z.number().describe("Number of invoices to return"),
   status: z.string().optional(),
 });
+
+// Expenses at/above this total, or flagged low-confidence, are routed to the
+// approval queue instead of posting straight to the ledger.
+const APPROVAL_THRESHOLD_INR = 5000;
+
+type RecordExpenseInput = z.infer<typeof recordExpenseParams>;
+
+function confidenceScore(c?: "high" | "medium" | "low"): number {
+  return c === "high" ? 90 : c === "medium" ? 60 : c === "low" ? 30 : 80;
+}
+
+/**
+ * Post-only expense primitive: recomputes GST deterministically and writes the
+ * expense + balanced journal entry. No routing — used when auto-posting and by
+ * the approval executor (so approving a queued item never re-queues it).
+ */
+export async function postExpenseRecord(input: RecordExpenseInput, actor = "ai_web") {
+  const accountId = await resolveExpenseAccount(input.categoryDescription);
+  if (!accountId) {
+    return "Could not determine expense category. Please create the expense manually.";
+  }
+
+  // Never post the model's raw tax split — recompute it deterministically.
+  const gst = normalizeExpenseGst({
+    amount: input.amount,
+    cgst: input.cgst,
+    sgst: input.sgst,
+    igst: input.igst,
+  });
+  const totalAmount = Math.round((input.amount + gst.taxAmount) * 100) / 100;
+
+  const [expense] = await db
+    .insert(expenses)
+    .values({
+      orgId: ORG_ID,
+      date: input.date ? new Date(input.date) : new Date(),
+      vendorName: input.vendorName,
+      accountId,
+      amount: String(input.amount),
+      taxAmount: String(gst.taxAmount),
+      totalAmount: String(totalAmount),
+      notes: input.notes,
+      source: "whatsapp",
+      aiCategorized: true,
+    })
+    .returning();
+
+  const bankId = await getAccountByCode(ORG_ID, "1120");
+  if (bankId) {
+    await postExpense({
+      orgId: ORG_ID,
+      expenseId: expense.id,
+      date: expense.date,
+      amount: input.amount,
+      cgst: gst.cgst,
+      sgst: gst.sgst,
+      igst: gst.igst,
+      total: totalAmount,
+      expenseAccountId: accountId,
+      description: input.vendorName ?? input.notes ?? "Expense",
+      bankAccountId: bankId,
+    });
+  }
+
+  logActivity({
+    orgId: ORG_ID,
+    actor,
+    action: "tool:recordExpense",
+    entityType: "expense",
+    entityRef: expense.id,
+    input: { vendorName: input.vendorName, amount: input.amount, category: input.categoryDescription },
+    output: { expenseId: expense.id, total: totalAmount },
+  }).catch(() => {});
+
+  return {
+    expenseId: expense.id,
+    vendorName: input.vendorName,
+    amount: formatINR(totalAmount),
+    message: `Expense of ${formatINR(totalAmount)} recorded${input.vendorName ? ` for ${input.vendorName}` : ""}`,
+  };
+}
+
+/**
+ * Routing wrapper used as the recordExpense tool. Large (≥ ₹5,000) or
+ * low-confidence captures are queued for human review; everything else posts
+ * immediately. Applies on both web chat and WhatsApp (the channel is recorded
+ * on the approval). GST is validated up front and throws on an unreconcilable
+ * split either way.
+ */
+export function buildRecordExpense(channel: "web" | "whatsapp") {
+  const actor = channel === "whatsapp" ? "ai_whatsapp" : "ai_web";
+  return tool({
+    description:
+      "Record a business expense. Amounts ≥ ₹5,000 or low-confidence captures are queued for human review before they post.",
+    inputSchema: recordExpenseParams,
+    execute: async (input: RecordExpenseInput) => {
+      const gst = normalizeExpenseGst({
+        amount: input.amount,
+        cgst: input.cgst,
+        sgst: input.sgst,
+        igst: input.igst,
+      });
+      const totalAmount = Math.round((input.amount + gst.taxAmount) * 100) / 100;
+
+      const lowConfidence = input.confidence === "low";
+      if (totalAmount >= APPROVAL_THRESHOLD_INR || lowConfidence) {
+        const approval = await enqueueApproval({
+          orgId: ORG_ID,
+          type: "expense_record",
+          payload: {
+            date: input.date,
+            vendorName: input.vendorName,
+            categoryDescription: input.categoryDescription,
+            amount: input.amount,
+            cgst: gst.cgst,
+            sgst: gst.sgst,
+            igst: gst.igst,
+            notes: input.notes,
+            totalAmount,
+          },
+          confidence: confidenceScore(input.confidence),
+          sourceChannel: channel,
+        });
+
+        logActivity({
+          orgId: ORG_ID,
+          actor,
+          action: "tool:recordExpense:queued",
+          entityType: "approval",
+          entityRef: approval.id,
+          input: { vendorName: input.vendorName, amount: input.amount, total: totalAmount },
+          output: { approvalId: approval.id },
+        }).catch(() => {});
+
+        const reason = totalAmount >= APPROVAL_THRESHOLD_INR ? "it's above ₹5,000" : "it needs a quick check";
+        return `Expense of ${formatINR(totalAmount)}${input.vendorName ? ` from ${input.vendorName}` : ""} queued for review (${reason}). It'll post once approved.`;
+      }
+
+      return postExpenseRecord(input, actor);
+    },
+  });
+}
 
 export const agentTools = {
   getPnL: tool({
@@ -253,79 +400,7 @@ export const agentTools = {
     },
   }),
 
-  recordExpense: tool({
-    description: "Record a business expense",
-    inputSchema: recordExpenseParams,
-    execute: async (input: z.infer<typeof recordExpenseParams>) => {
-      const accountId = await resolveExpenseAccount(input.categoryDescription);
-      if (!accountId) {
-        return "Could not determine expense category. Please create the expense manually.";
-      }
-
-      // Never post the model's raw tax split — recompute it deterministically.
-      // Throws on an unreconcilable split so the caller can ask for a correction
-      // (and, on the approval path, roll back) rather than booking wrong GST.
-      const gst = normalizeExpenseGst({
-        amount: input.amount,
-        cgst: input.cgst,
-        sgst: input.sgst,
-        igst: input.igst,
-      });
-      const totalAmount = Math.round((input.amount + gst.taxAmount) * 100) / 100;
-
-      const [expense] = await db
-        .insert(expenses)
-        .values({
-          orgId: ORG_ID,
-          date: input.date ? new Date(input.date) : new Date(),
-          vendorName: input.vendorName,
-          accountId,
-          amount: String(input.amount),
-          taxAmount: String(gst.taxAmount),
-          totalAmount: String(totalAmount),
-          notes: input.notes,
-          source: "whatsapp",
-          aiCategorized: true,
-        })
-        .returning();
-
-      const bankId = await getAccountByCode(ORG_ID, "1120");
-      if (bankId) {
-        await postExpense({
-          orgId: ORG_ID,
-          expenseId: expense.id,
-          date: expense.date,
-          amount: input.amount,
-          cgst: gst.cgst,
-          sgst: gst.sgst,
-          igst: gst.igst,
-          total: totalAmount,
-          expenseAccountId: accountId,
-          description: input.vendorName ?? input.notes ?? "Expense",
-          bankAccountId: bankId,
-        });
-      }
-
-      const result = {
-        expenseId: expense.id,
-        vendorName: input.vendorName,
-        amount: formatINR(totalAmount),
-        message: `Expense of ${formatINR(totalAmount)} recorded${input.vendorName ? ` for ${input.vendorName}` : ""}`,
-      };
-
-      logActivity({
-        orgId: ORG_ID,
-        actor: "ai_web",
-        action: "tool:recordExpense",
-        entityType: "expense",
-        entityRef: expense.id,
-        input: { vendorName: input.vendorName, amount: input.amount, category: input.categoryDescription },
-        output: { expenseId: expense.id, total: totalAmount },
-      }).catch(() => {});
-
-      return result;
-    },
-  }),
+  recordExpense: buildRecordExpense("web"),
 
   learnVendorCategory: tool({
     description: "Save a vendor→category mapping so future expenses from this vendor are auto-categorized. Use this when the user corrects a category or explicitly tells you what a vendor should map to.",
