@@ -11,6 +11,10 @@
           {
                   "path": "/api/cron/morning-briefing",
                   "schedule": "0 22 * * *"
+          },
+          {
+                  "path": "/api/cron/nudges",
+                  "schedule": "30 3 * * *"
           }
     ]
 }
