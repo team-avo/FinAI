@@ -163,7 +163,7 @@ export function TeamTab() {
           </Table>
         )}
 
-        {!isOwner && (
+        {!members.isLoading && !isOwner && (
           <p className="text-sm text-muted-foreground">Only an owner can change the team.</p>
         )}
       </CardContent>
