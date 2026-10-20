@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { ShimmerSkeleton } from "@/components/effects/shimmer-skeleton";
 import { Separator } from "@/components/ui/separator";
+import { TeamTab } from "@/components/settings/team-tab";
 import { toast } from "sonner";
 import { useEffect, Suspense, useState } from "react";
 import { Monitor, Smartphone, Plug, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
@@ -122,6 +123,7 @@ function SettingsPageInner() {
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="org">Organization</TabsTrigger>
+          <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="coa">Chart of Accounts</TabsTrigger>
           <TabsTrigger value="tax">Tax Rates</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
@@ -323,6 +325,10 @@ function SettingsPageInner() {
         </TabsContent>
 
         {/* Chart of Accounts Tab */}
+        <TabsContent value="team">
+          <TeamTab />
+        </TabsContent>
+
         <TabsContent value="coa">
           <Card>
             <CardHeader><CardTitle>Chart of Accounts</CardTitle></CardHeader>
