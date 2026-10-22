@@ -38,9 +38,19 @@ export function TeamTab() {
   const self = members.data?.find((m) => m.isSelf);
   const isOwner = self?.role === "owner";
 
-  const add = trpc.members.add.useMutation({
-    onSuccess: () => {
-      toast.success("Team member added");
+  const add = trpc.members.invite.useMutation({
+    onSuccess: (r) => {
+      if (r.status === "invited") {
+        toast.success(`Invitation emailed to ${r.email}`);
+        if (r.url) {
+          navigator.clipboard
+            ?.writeText(r.url)
+            .then(() => toast.message("Invite link also copied to your clipboard"))
+            .catch(() => {});
+        }
+      } else {
+        toast.success("Team member added");
+      }
       setEmail("");
       utils.members.list.invalidate();
     },

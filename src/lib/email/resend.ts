@@ -80,12 +80,53 @@ export async function sendMagicLinkEmail({
         <p style="font-size: 14px; color: #555;">Click the link below to sign in:</p>
         <a
           href="${url}"
-          style="display: inline-block; background: #d4ff00; color: #000; font-weight: 600; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; margin: 16px 0;"
+          style="display: inline-block; background: #8B3DFF; color: #fff; font-weight: 600; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; margin: 16px 0;"
         >
           Sign in to FinAI
         </a>
         <p style="font-size: 12px; color: #999;">
           This link expires in 15 minutes. If you didn't request this, you can ignore this email.
+        </p>
+      </div>
+    `,
+  });
+}
+
+export async function sendInviteEmail({
+  to,
+  orgName,
+  inviterName,
+  role,
+  url,
+}: {
+  to: string;
+  orgName: string;
+  inviterName?: string;
+  role: string;
+  url: string;
+}) {
+  const roleLine =
+    role === "viewer"
+      ? "You'll be able to review the books and GST reports (read-only)."
+      : "You'll be able to work on the books.";
+  return getResend().emails.send({
+    from: FROM,
+    to,
+    subject: `You're invited to ${orgName} on FinAI`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; color: #111;">
+        <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 16px;">Join ${orgName} on FinAI</h2>
+        <p style="font-size: 14px; color: #555;">
+          ${inviterName ? `${inviterName} has invited you` : "You've been invited"} to join <strong>${orgName}</strong>'s books on FinAI as a <strong>${role}</strong>. ${roleLine}
+        </p>
+        <a
+          href="${url}"
+          style="display: inline-block; background: #8B3DFF; color: #fff; font-weight: 600; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; margin: 16px 0;"
+        >
+          Accept invitation
+        </a>
+        <p style="font-size: 12px; color: #999;">
+          Sign in or create your account with this email address (${to}) to join. This invite expires in 7 days.
         </p>
       </div>
     `,
