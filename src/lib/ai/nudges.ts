@@ -1,9 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { memberships, notifications } from "@/lib/db/schema";
+import { gstr2bEntries, memberships, notifications } from "@/lib/db/schema";
 import { createNotification } from "@/lib/trpc/routers/notifications";
 import { getOutstandingReceivables } from "@/lib/accounting/reports/outstanding";
+import { reconcileItc } from "@/lib/accounting/reports/itc-recon";
 import { formatINR } from "@/lib/utils";
+
+function round2(v: number) {
+  return Math.round((v + Number.EPSILON) * 100) / 100;
+}
 
 /**
  * Proactive nudges: time- and data-driven reminders that protect money —
@@ -65,8 +70,36 @@ export async function computeNudges(orgId: string, now: Date = new Date()): Prom
     });
   }
 
-  // 30-November ITC cliff for the previous financial year — remind in Oct & Nov.
-  if (m === 9 || m === 10) {
+  // ITC at risk — data-driven from GSTR-2B reconciliation when a 2B has been
+  // uploaded; otherwise the generic 30-November cliff reminder in Oct & Nov.
+  let itcHandled = false;
+  try {
+    const periods = await db
+      .selectDistinct({ period: gstr2bEntries.period })
+      .from(gstr2bEntries)
+      .where(eq(gstr2bEntries.orgId, orgId));
+    if (periods.length > 0) {
+      let atRisk = 0;
+      const suppliers = new Set<string>();
+      for (const { period } of periods) {
+        const r = await reconcileItc(orgId, period);
+        atRisk = round2(atRisk + r.itc.atRisk + r.itc.mismatch);
+        for (const l of r.atRiskLines) suppliers.add(l.gstin);
+      }
+      if (atRisk >= 1) {
+        nudges.push({
+          key: `itc-at-risk:${ym}`,
+          level: atRisk >= 10000 ? "critical" : "warn",
+          title: `${formatINR(atRisk)} of input credit is at risk`,
+          body: `${suppliers.size} supplier${suppliers.size === 1 ? "" : "s"} haven't reported invoices you've recorded, so that input tax credit is lost after 30 November. Review the GSTR-2B reconciliation and chase them.`,
+        });
+        itcHandled = true;
+      }
+    }
+  } catch {
+    // Reconciliation is best-effort inside nudges; fall through to the reminder.
+  }
+  if (!itcHandled && (m === 9 || m === 10)) {
     const fy = `FY ${y - 1}-${String(y).slice(2)}`;
     nudges.push({
       key: `itc-cutoff:${y}`,
