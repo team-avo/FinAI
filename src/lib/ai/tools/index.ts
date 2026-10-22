@@ -50,6 +50,18 @@ const recordExpenseParams = z.object({
   cgst: z.number().min(0).describe("CGST amount"),
   sgst: z.number().min(0).describe("SGST amount"),
   igst: z.number().min(0).describe("IGST amount"),
+  vendorGstin: z
+    .string()
+    .optional()
+    .describe("The vendor's 15-character GSTIN from the bill, if visible. Needed to reconcile the input tax credit against GSTR-2B — always include it when you can read it."),
+  vendorInvoiceNumber: z
+    .string()
+    .optional()
+    .describe("The vendor's invoice/bill number, if visible on the bill."),
+  invoiceDate: z
+    .string()
+    .optional()
+    .describe("The bill/invoice date in YYYY-MM-DD, if visible (used for GST period matching)."),
   notes: z.string().optional(),
   confidence: z
     .enum(["high", "medium", "low"])
@@ -102,6 +114,17 @@ export async function postExpenseRecord(input: RecordExpenseInput, actor = "ai_w
       amount: String(input.amount),
       taxAmount: String(gst.taxAmount),
       totalAmount: String(totalAmount),
+      // Deterministic split + purchase-register fields for GSTR-2B matching.
+      cgst: String(gst.cgst),
+      sgst: String(gst.sgst),
+      igst: String(gst.igst),
+      vendorGstin: input.vendorGstin?.trim() || null,
+      vendorInvoiceNumber: input.vendorInvoiceNumber?.trim() || null,
+      invoiceDate: input.invoiceDate
+        ? new Date(input.invoiceDate)
+        : input.date
+          ? new Date(input.date)
+          : new Date(),
       notes: input.notes,
       source: "whatsapp",
       aiCategorized: true,
@@ -178,6 +201,9 @@ export function buildRecordExpense(channel: "web" | "whatsapp") {
             cgst: gst.cgst,
             sgst: gst.sgst,
             igst: gst.igst,
+            vendorGstin: input.vendorGstin,
+            vendorInvoiceNumber: input.vendorInvoiceNumber,
+            invoiceDate: input.invoiceDate,
             notes: input.notes,
             totalAmount,
           },
