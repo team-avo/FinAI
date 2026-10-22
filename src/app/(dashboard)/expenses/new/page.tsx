@@ -29,6 +29,7 @@ const schema = z.object({
   igst: z.string(),
   notes: z.string().optional(),
   reference: z.string().optional(),
+  vendorGstin: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -79,6 +80,8 @@ export default function NewExpensePage() {
       if (data.cgst) setValue("cgst", String(data.cgst));
       if (data.sgst) setValue("sgst", String(data.sgst));
       if (data.igst) setValue("igst", String(data.igst));
+      if (data.gstin) setValue("vendorGstin", data.gstin);
+      if (data.invoiceNumber) setValue("reference", data.invoiceNumber);
 
       toast.success("Bill scanned — please verify the fields");
     } catch {
@@ -101,6 +104,8 @@ export default function NewExpensePage() {
       cgst: parseFloat(data.cgst || "0"),
       sgst: parseFloat(data.sgst || "0"),
       igst: parseFloat(data.igst || "0"),
+      vendorInvoiceNumber: data.reference,
+      invoiceDate: data.date,
     });
   };
 
@@ -222,9 +227,16 @@ export default function NewExpensePage() {
         <Card>
           <CardHeader><CardTitle>Additional Info</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="space-y-1.5">
-              <Label>Reference / Invoice #</Label>
-              <Input {...register("reference")} placeholder="INV-12345" className="font-mono" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Vendor GSTIN</Label>
+                <Input {...register("vendorGstin")} placeholder="29ABCDE1234F1Z5" className="font-mono" maxLength={15} />
+                <p className="text-[11px] text-fg-subtle">Used to reconcile input credit against GSTR-2B.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Invoice #</Label>
+                <Input {...register("reference")} placeholder="INV-12345" className="font-mono" />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Notes</Label>
