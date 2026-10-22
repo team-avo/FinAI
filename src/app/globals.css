@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------
- * FinAI design tokens — dark-first, single electric-lime accent.
+ * FinAI design tokens — dark-first, brand violet accent.
  * Tailwind v4 maps these to utilities automatically.
  * ------------------------------------------------------------------ */
 @theme {
@@ -17,9 +17,9 @@
   --color-fg-muted: oklch(0.7 0 0);          /* zinc-400 */
   --color-fg-subtle: oklch(0.5 0 0);         /* zinc-500/600 */
 
-  --color-accent: oklch(0.93 0.22 122);      /* electric lime #d4ff00 */
-  --color-accent-muted: oklch(0.7 0.18 122);
-  --color-accent-fg: oklch(0.18 0 0);        /* near-black text on lime */
+  --color-accent: oklch(0.66 0.215 304);     /* brand violet #B45CFF */
+  --color-accent-muted: oklch(0.57 0.22 303); /* deep violet #8B3DFF */
+  --color-accent-fg: oklch(0.99 0 0);        /* white text on violet */
 
   --color-positive: oklch(0.78 0.18 152);    /* emerald-400 */
   --color-negative: oklch(0.7 0.21 17);      /* rose-400 */

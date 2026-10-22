@@ -27,7 +27,7 @@ interface WidgetProps {
 
 const CHART_COLORS = [
   "var(--color-accent)",
-  "#a3e635",
+  "#49E8AB",
   "#86efac",
   "#67e8f9",
   "#fbbf24",
