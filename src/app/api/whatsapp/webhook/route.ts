@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
           {
             type: "text" as const,
             text:
-              "I'm sending a bill/receipt photo. Read it and record it as an expense: extract the vendor, date, base amount and GST (CGST/SGST/IGST). If the photo is unclear or a field is missing, ask me instead of guessing.",
+              "I'm sending a bill/receipt photo. Read it and record it as an expense: extract the vendor, date, base amount, GST (CGST/SGST/IGST), and — important for tax credit — the vendor's GSTIN and the invoice number. If the photo is unclear or a field is missing, ask me instead of guessing.",
           },
           { type: "image" as const, image: imageDataUrl },
         ]

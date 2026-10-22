@@ -16,6 +16,9 @@ const expensePayloadSchema = z.object({
   cgst: z.number().min(0),
   sgst: z.number().min(0),
   igst: z.number().min(0),
+  vendorGstin: z.string().optional(),
+  vendorInvoiceNumber: z.string().optional(),
+  invoiceDate: z.string().optional(),
   notes: z.string().optional(),
 });
 
