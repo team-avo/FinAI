@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { format, subMonths } from "date-fns";
-import { ShieldCheck, Upload, AlertTriangle } from "lucide-react";
+import { ShieldCheck, Upload, AlertTriangle, Download, Copy } from "lucide-react";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -12,6 +12,62 @@ import { Badge } from "@/components/ui/badge";
 import { ShimmerSkeleton } from "@/components/effects/shimmer-skeleton";
 import { formatINR } from "@/lib/utils";
 import { toast } from "sonner";
+import type { ItcReconReport } from "@/lib/accounting/reports/itc-recon";
+
+function reconCsv(r: ItcReconReport): string {
+  const header = ["Status", "Supplier", "GSTIN", "Invoice", "Books taxable", "2B taxable", "Books tax", "2B tax", "ITC at risk"];
+  const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const mk = (status: string, l: ItcReconReport["atRiskLines"][number]) => [
+    status, l.vendorName ?? "", l.gstin, l.invoiceNumber,
+    l.booksTaxable ?? "", l.twoBTaxable ?? "", l.booksTax ?? "", l.twoBTax ?? "", l.itcAtRisk ?? "",
+  ];
+  const rows = [
+    ...r.atRiskLines.map((l) => mk("At risk", l)),
+    ...r.mismatchLines.map((l) => mk("Mismatch", l)),
+    ...r.missingInBooks.map((l) => mk("Missing in books", l)),
+  ];
+  return [header, ...rows].map((row) => row.map(cell).join(",")).join("\n");
+}
+
+function downloadCsv(r: ItcReconReport, period: string) {
+  const blob = new Blob([reconCsv(r)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `itc-reconciliation-${period}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildReminders(r: ItcReconReport, period: string): string {
+  const bySupplier = new Map<string, ItcReconReport["atRiskLines"]>();
+  for (const l of r.atRiskLines) {
+    const k = l.vendorName || l.gstin;
+    const arr = bySupplier.get(k) ?? [];
+    arr.push(l);
+    bySupplier.set(k, arr);
+  }
+  const parts: string[] = [];
+  for (const [sup, lines] of bySupplier) {
+    const invs = lines.map((l) => `${l.invoiceNumber} (${formatINR(l.itcAtRisk)})`).join(", ");
+    const plural = lines.length > 1;
+    parts.push(
+      `Hi ${sup}, invoice${plural ? "s" : ""} ${invs} ${plural ? "don't" : "doesn't"} appear in our GSTR-2B for ${period}. Please file or report ${plural ? "them" : "it"} so we can claim the input tax credit before 30 November. Thanks!`,
+    );
+  }
+  return parts.join("\n\n");
+}
+
+async function copyReminders(r: ItcReconReport, period: string) {
+  try {
+    await navigator.clipboard.writeText(buildReminders(r, period));
+    toast.success("Supplier reminders copied — paste into WhatsApp or email");
+  } catch {
+    toast.error("Couldn't copy to clipboard. Try selecting the text manually.");
+  }
+}
 
 export default function ReconciliationPage() {
   const periods = useMemo(() => {
@@ -103,6 +159,16 @@ export default function ReconciliationPage() {
         </Card>
       ) : (
         <>
+          <div className="flex flex-wrap gap-2 justify-end">
+            {r.atRiskLines.length > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => copyReminders(r, period)}>
+                <Copy className="size-4" /> Copy supplier reminders
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={() => downloadCsv(r, period)}>
+              <Download className="size-4" /> Export CSV
+            </Button>
+          </div>
           {/* Summary tiles */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Card>
