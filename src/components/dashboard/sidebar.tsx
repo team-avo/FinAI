@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Zap, Activity, ClipboardList, ShieldCheck, Fingerprint } from "lucide-react";
+import { Home, Zap, Activity, ClipboardList, ShieldCheck, Fingerprint, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -15,6 +15,7 @@ import {
 // while the Zoho integration is built — re-introduce as features ship.
 const NAV = [
   { href: "/dashboard", icon: Home, label: "Dashboard" },
+  { href: "/money-check", icon: Sparkles, label: "Money Check" },
   { href: "/activity", icon: Activity, label: "AI Activity" },
   { href: "/approvals", icon: ClipboardList, label: "Approvals" },
   { href: "/reconciliation", icon: ShieldCheck, label: "GST Credit" },
