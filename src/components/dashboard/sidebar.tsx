@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Zap, Activity, ClipboardList, ShieldCheck } from "lucide-react";
+import { Home, Zap, Activity, ClipboardList, ShieldCheck, Fingerprint } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -18,6 +18,7 @@ const NAV = [
   { href: "/activity", icon: Activity, label: "AI Activity" },
   { href: "/approvals", icon: ClipboardList, label: "Approvals" },
   { href: "/reconciliation", icon: ShieldCheck, label: "GST Credit" },
+  { href: "/suppliers", icon: Fingerprint, label: "Supplier Trust" },
 ];
 
 export function Sidebar() {
