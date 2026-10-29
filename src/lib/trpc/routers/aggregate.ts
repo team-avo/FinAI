@@ -7,7 +7,6 @@ import { getOrBuildAggregate } from "@/lib/zoho/aggregator";
 import { buildDbAggregate } from "@/lib/db/aggregate";
 import type { AIActivityItem, DashboardAggregate } from "@/lib/dashboard/types";
 
-const ORG_ID = "advertout";
 
 async function fetchAIActivity(orgId: string): Promise<AIActivityItem[]> {
   const rows = await db
@@ -72,7 +71,9 @@ async function fetchAIActivity(orgId: string): Promise<AIActivityItem[]> {
  */
 export const aggregateRouter = router({
   get: publicProcedure.query(async ({ ctx }) => {
-    const orgId = ORG_ID;
+    // Authenticated users get their own org's aggregate; unauthenticated
+    // requests keep the context default.
+    const orgId = ctx.orgId;
     let aggregate: DashboardAggregate;
     let source: "zoho" | "db" = "db";
 

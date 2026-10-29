@@ -3,8 +3,6 @@ import { db } from "@/lib/db/client";
 import { zohoConnections } from "@/lib/db/schema";
 import { router, protectedProcedure } from "../init";
 
-const ORG_ID = "advertout";
-
 /**
  * Zoho integration status / management.
  *
@@ -27,7 +25,7 @@ export const zohoRouter = router({
       })
       .from(zohoConnections)
       .where(
-        and(eq(zohoConnections.userId, ctx.userId), eq(zohoConnections.orgId, ORG_ID)),
+        and(eq(zohoConnections.userId, ctx.userId), eq(zohoConnections.orgId, ctx.orgId)),
       )
       .limit(1);
 
@@ -42,7 +40,7 @@ export const zohoRouter = router({
         zohoOrgName: zohoConnections.zohoOrgName,
       })
       .from(zohoConnections)
-      .where(eq(zohoConnections.orgId, ORG_ID))
+      .where(eq(zohoConnections.orgId, ctx.orgId))
       .limit(1);
 
     if (teammate) {
