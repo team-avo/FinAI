@@ -1,5 +1,6 @@
 import { getOutstandingReceivables } from "@/lib/accounting/reports/outstanding";
 import { computeSupplierTrust } from "@/lib/accounting/reports/supplier-trust";
+import { forecastCash } from "@/lib/accounting/reports/cash-forecast";
 import { formatINR } from "@/lib/utils";
 
 /**
@@ -20,6 +21,7 @@ export interface MoneyAction {
   label: string;
   href?: string; // in-app navigation
   copy?: string; // text to copy to clipboard (e.g. reminders)
+  connect?: boolean; // connect the (sandbox) bank feed
   soon?: boolean; // not wired yet
 }
 
@@ -58,9 +60,10 @@ function itcCutoff(now: Date): Date {
 }
 
 export async function computeMoneyCheck(orgId: string, now: Date = new Date()): Promise<MoneyCheck> {
-  const [recv, trust] = await Promise.all([
+  const [recv, trust, forecast] = await Promise.all([
     getOutstandingReceivables(orgId),
     computeSupplierTrust(orgId),
+    forecastCash(orgId, 30, now),
   ]);
 
   const items: MoneyItem[] = [];
@@ -79,16 +82,38 @@ export async function computeMoneyCheck(orgId: string, now: Date = new Date()): 
     action: recv.items.length > 0 ? { label: "View invoices", href: "/invoices" } : undefined,
   });
 
-  // 2 · Forward cash forecast — needs a bank feed (coming).
-  items.push({
-    icon: "📉",
-    kind: "forecast",
-    title: "See the day you'll run short",
-    detail: "Connect your bank over Account Aggregator and the agent will predict a cash dip before it happens.",
-    tone: "muted",
-    live: false,
-    action: { label: "Connect bank", soon: true },
-  });
+  // 2 · Forward cash forecast — live once a bank is connected.
+  if (!forecast.connected) {
+    items.push({
+      icon: "📉",
+      kind: "forecast",
+      title: "See the day you'll run short",
+      detail: "Connect your bank over Account Aggregator and the agent predicts a cash dip before it happens. (Sandbox for now — tap to try it.)",
+      tone: "muted",
+      live: false,
+      action: { label: "Connect bank", connect: true },
+    });
+  } else if (forecast.willGoNegative) {
+    items.push({
+      icon: "📉",
+      kind: "forecast",
+      title: `You'll run short around ${forecast.shortDateLabel}`,
+      detail: `Spending about ${formatINR(forecast.dailyBurn ?? 0)}/day with no payments banked yet — projected to bottom out near ${formatINR(forecast.lowBalance ?? 0)} by ${forecast.lowDateLabel}. Chase the overdue invoices or draw credit to cover it.`,
+      tone: "critical",
+      live: true,
+      list: [{ label: forecast.displayName ?? "Bank", value: `now ${formatINR(forecast.startBalance ?? 0)}` }],
+    });
+  } else {
+    items.push({
+      icon: "📈",
+      kind: "forecast",
+      title: `Lowest cash ${formatINR(forecast.lowBalance ?? 0)} around ${forecast.lowDateLabel}`,
+      detail: `Projected over the next ${forecast.horizonDays} days at about ${formatINR(forecast.dailyBurn ?? 0)}/day. You stay above water.`,
+      tone: "positive",
+      live: true,
+      list: [{ label: forecast.displayName ?? "Bank", value: `now ${formatINR(forecast.startBalance ?? 0)}` }],
+    });
+  }
 
   // 3 · Chase overdue receivables — real.
   if (recv.overdueCount > 0) {

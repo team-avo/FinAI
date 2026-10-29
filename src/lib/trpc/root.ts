@@ -14,6 +14,7 @@ import { approvalsRouter } from "./routers/approvals";
 import { membersRouter } from "./routers/members";
 import { gst2bRouter } from "./routers/gst2b";
 import { moneyCheckRouter } from "./routers/money-check";
+import { bankRouter } from "./routers/bank";
 import { activityRouter } from "./routers/activity";
 import { briefingsRouter } from "./routers/briefings";
 import { zohoRouter } from "./routers/zoho";
@@ -34,6 +35,7 @@ export const appRouter = router({
   members: membersRouter,
   gst2b: gst2bRouter,
   moneyCheck: moneyCheckRouter,
+  bank: bankRouter,
   activity: activityRouter,
   briefings: briefingsRouter,
   zoho: zohoRouter,

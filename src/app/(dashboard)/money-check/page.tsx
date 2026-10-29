@@ -20,10 +20,22 @@ const TONE: Record<MoneyTone, string> = {
 
 function ItemRow({ item }: { item: MoneyItem }) {
   const router = useRouter();
+  const utils = trpc.useUtils();
+  const connect = trpc.bank.connect.useMutation({
+    onSuccess: (r) => {
+      toast.success(`Connected ${r.displayName} — forecast is live`);
+      utils.moneyCheck.get.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   async function onAction() {
     const a = item.action;
     if (!a || a.soon) return;
+    if (a.connect) {
+      connect.mutate();
+      return;
+    }
     if (a.copy) {
       try {
         await navigator.clipboard.writeText(a.copy);
@@ -64,11 +76,11 @@ function ItemRow({ item }: { item: MoneyItem }) {
                 <Button
                   size="sm"
                   variant={item.action.soon ? "ghost" : "secondary"}
-                  disabled={item.action.soon}
+                  disabled={item.action.soon || connect.isPending}
                   onClick={onAction}
                 >
                   {item.action.copy ? <Copy className="size-3.5" /> : null}
-                  {item.action.label}
+                  {item.action.connect && connect.isPending ? "Connecting…" : item.action.label}
                   {item.action.href ? <ArrowRight className="size-3.5" /> : null}
                 </Button>
               </div>
