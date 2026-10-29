@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
+import { rebuildSupplierNetworkStats } from "@/lib/accounting/reports/supplier-trust";
 import { runNudges } from "@/lib/ai/nudges";
-import { logActivity } from "@/lib/trpc/routers/activity";
 import { getActiveOrgIds } from "@/lib/db/active-orgs";
+import { logActivity } from "@/lib/trpc/routers/activity";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -34,7 +35,15 @@ export async function GET(req: NextRequest) {
         results.push({ orgId, error: true });
       }
     }
-    return NextResponse.json({ status: "ok", orgs: orgIds.length, results });
+    // Rebuild the cross-business Trust Graph once per day (global, not per-org).
+    let networkStored = 0;
+    try {
+      networkStored = await rebuildSupplierNetworkStats();
+    } catch (error) {
+      console.error("Trust Graph rebuild error:", error);
+    }
+
+    return NextResponse.json({ status: "ok", orgs: orgIds.length, results, networkStored });
   } catch (error) {
     console.error("Nudges cron error:", error);
     return NextResponse.json({ status: "error" }, { status: 500 });
