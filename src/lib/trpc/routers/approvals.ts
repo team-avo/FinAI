@@ -1,10 +1,10 @@
-import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
+import { z } from "zod";
+import { postExpenseRecord } from "@/lib/ai/tools";
 import { db } from "@/lib/db/client";
 import { approvalQueue } from "@/lib/db/schema";
-import { router, protectedProcedure } from "../init";
+import { protectedProcedure, router } from "../init";
 import { logActivity } from "./activity";
-import { postExpenseRecord } from "@/lib/ai/tools";
 
 // Shape of an "expense_record" approval payload (mirrors the recordExpense tool
 // input; validated before we post so a malformed row can't corrupt the ledger).
@@ -26,13 +26,12 @@ const expensePayloadSchema = z.object({
 // the approval type has no executor yet). NOTE: recordExpense posts to the
 // capture org ("advertout"); the approve mutation only claims rows whose orgId
 // matches ctx.orgId, so org stays consistent until ORG_ID is de-hardcoded.
-async function executeApproval(
-  row: typeof approvalQueue.$inferSelect,
-): Promise<unknown> {
+async function executeApproval(row: typeof approvalQueue.$inferSelect): Promise<unknown> {
   if (row.type === "expense_record") {
     const parsed = expensePayloadSchema.parse(row.payload);
     // Post-only primitive (no routing) so approving never re-queues the item.
-    return postExpenseRecord(parsed);
+    // Posts into the approval's own org.
+    return postExpenseRecord(parsed, row.orgId);
   }
   // Other approval types are not auto-posted yet; approving records the decision.
   return null;
@@ -41,10 +40,12 @@ async function executeApproval(
 export const approvalsRouter = router({
   list: protectedProcedure
     .input(
-      z.object({
-        status: z.enum(["pending", "approved", "rejected", "edited", "all"]).default("pending"),
-        limit: z.number().min(1).max(100).default(50),
-      }).optional(),
+      z
+        .object({
+          status: z.enum(["pending", "approved", "rejected", "edited", "all"]).default("pending"),
+          limit: z.number().min(1).max(100).default(50),
+        })
+        .optional(),
     )
     .query(async ({ ctx, input }) => {
       const conditions = [eq(approvalQueue.orgId, ctx.orgId)];
@@ -68,7 +69,9 @@ export const approvalsRouter = router({
   }),
 
   approve: protectedProcedure
-    .input(z.object({ id: z.string(), editedPayload: z.record(z.string(), z.unknown()).optional() }))
+    .input(
+      z.object({ id: z.string(), editedPayload: z.record(z.string(), z.unknown()).optional() }),
+    )
     .mutation(async ({ ctx, input }) => {
       const newStatus = input.editedPayload ? ("edited" as const) : ("approved" as const);
 

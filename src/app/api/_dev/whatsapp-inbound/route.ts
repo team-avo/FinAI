@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
-import { agentToolsWhatsApp } from "@/lib/ai/tools/whatsapp";
-import { buildSystemPrompt } from "@/lib/ai/prompts/system";
-import { streamText } from "ai";
 import { google } from "@ai-sdk/google";
+import { streamText } from "ai";
+import { type NextRequest, NextResponse } from "next/server";
+import { buildSystemPrompt } from "@/lib/ai/prompts/system";
+import { buildAgentToolsWhatsApp } from "@/lib/ai/tools/whatsapp";
 
 export const runtime = "nodejs";
 
@@ -13,7 +13,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not available" }, { status: 404 });
   }
 
-  const { message, phone = "+919999999999" } = await req.json() as { message: string; phone?: string };
+  const { message, phone = "+919999999999" } = (await req.json()) as {
+    message: string;
+    phone?: string;
+  };
 
   if (!message?.trim()) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
@@ -23,7 +26,7 @@ export async function POST(req: NextRequest) {
     model: google("gemini-3.8-flash"),
     system: buildSystemPrompt(),
     messages: [{ role: "user", content: message }],
-    tools: agentToolsWhatsApp,
+    tools: buildAgentToolsWhatsApp("advertout"),
     temperature: 0.1,
   });
 
@@ -33,7 +36,7 @@ export async function POST(req: NextRequest) {
   }
 
   const toolResults: unknown[] = [];
-  for await (const step of (await result.steps)) {
+  for await (const step of await result.steps) {
     if (step.toolResults?.length) {
       toolResults.push(...step.toolResults);
     }

@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { verifyWebhookSignature, sendTextMessage, downloadMedia } from "@/lib/whatsapp/client";
-import { transcribeAudio } from "@/lib/whatsapp/transcribe";
-import { streamText } from "ai";
 import { google } from "@ai-sdk/google";
-import { agentToolsWhatsApp } from "@/lib/ai/tools/whatsapp";
+import { streamText } from "ai";
+import { and, eq } from "drizzle-orm";
+import { type NextRequest, NextResponse } from "next/server";
 import { buildSystemPrompt } from "@/lib/ai/prompts/system";
+import { buildAgentToolsWhatsApp } from "@/lib/ai/tools/whatsapp";
 import { db } from "@/lib/db/client";
 import { aiConversations, aiMessages } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { downloadMedia, sendTextMessage, verifyWebhookSignature } from "@/lib/whatsapp/client";
+import { transcribeAudio } from "@/lib/whatsapp/transcribe";
 
 export const runtime = "nodejs";
 
@@ -150,8 +150,7 @@ export async function POST(req: NextRequest) {
       ? [
           {
             type: "text" as const,
-            text:
-              "I'm sending a bill/receipt photo. Read it and record it as an expense: extract the vendor, date, base amount, GST (CGST/SGST/IGST), and — important for tax credit — the vendor's GSTIN and the invoice number. If the photo is unclear or a field is missing, ask me instead of guessing.",
+            text: "I'm sending a bill/receipt photo. Read it and record it as an expense: extract the vendor, date, base amount, GST (CGST/SGST/IGST), and — important for tax credit — the vendor's GSTIN and the invoice number. If the photo is unclear or a field is missing, ask me instead of guessing.",
           },
           { type: "image" as const, image: imageDataUrl },
         ]
@@ -161,7 +160,7 @@ export async function POST(req: NextRequest) {
       model: google("gemini-3.8-flash"),
       system: buildSystemPrompt(),
       messages: [...priorMessages, { role: "user", content: currentContent }],
-      tools: agentToolsWhatsApp,
+      tools: buildAgentToolsWhatsApp("advertout"),
       temperature: 0.1,
     });
 
