@@ -6,15 +6,18 @@ import { db } from "@/lib/db/client";
 import { invoices, invoiceLines, organizations } from "@/lib/db/schema";
 import { and, eq, asc } from "drizzle-orm";
 import { InvoicePDF } from "@/lib/pdf/invoice-template";
+import { getSessionOrg } from "@/lib/auth/session-org";
 
 export const runtime = "nodejs";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const ORG_ID = "advertout";
+  const sess = await getSessionOrg(req);
+  if (!sess) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ORG_ID = sess.orgId;
 
   const [invoice] = await db
     .select()
