@@ -18,3 +18,16 @@ export const supplierNetworkStats = pgTable("supplier_network_stats", {
   score: integer("score").notNull(), // 0–100
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * Watermark for the incremental Trust Graph rebuild. A single row (id
+ * "singleton") holding the instant of the last rebuild. The incremental path
+ * (run after each GSTR-2B upload) recomputes only the supplier GSTINs touched by
+ * expenses / 2B rows written after this instant, instead of rescanning every
+ * org's data. The daily full rebuild resets it and remains the authoritative
+ * backstop (it also catches deletions, which a timestamp watermark can't).
+ */
+export const trustGraphMeta = pgTable("trust_graph_meta", {
+  id: varchar("id", { length: 16 }).primaryKey(), // always "singleton"
+  lastRebuiltAt: timestamp("last_rebuilt_at").notNull().defaultNow(),
+});

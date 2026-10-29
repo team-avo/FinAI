@@ -3,7 +3,7 @@ import { z } from "zod";
 import { reconcileItc } from "@/lib/accounting/reports/itc-recon";
 import {
   computeSupplierTrust,
-  rebuildSupplierNetworkStats,
+  rebuildSupplierNetworkStatsIncremental,
 } from "@/lib/accounting/reports/supplier-trust";
 import { db } from "@/lib/db/client";
 import { gstr2bEntries } from "@/lib/db/schema";
@@ -54,8 +54,9 @@ export const gst2bRouter = router({
       }).catch(() => {});
 
       // Refresh the cross-business Trust Graph with this org's new filing
-      // observations (fire-and-forget — the page reads the last materialised copy).
-      rebuildSupplierNetworkStats().catch(() => {});
+      // observations. Incremental: only the GSTINs this upload touches are
+      // recomputed (fire-and-forget — the page reads the last materialised copy).
+      rebuildSupplierNetworkStatsIncremental().catch(() => {});
 
       return { period: input.period, imported: parsed.length };
     }),

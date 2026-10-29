@@ -1,9 +1,17 @@
 import { execSync } from "node:child_process";
+import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { computeMoneyCheck } from "@/lib/ai/money-check";
+import { db } from "@/lib/db/client";
+import { expenses, trustGraphMeta } from "@/lib/db/schema";
 import { forecastCash } from "./cash-forecast";
 import { reconcileItc } from "./itc-recon";
-import { computeSupplierTrust, rebuildSupplierNetworkStats } from "./supplier-trust";
+import {
+  computeSupplierTrust,
+  getSupplierNetworkStats,
+  rebuildSupplierNetworkStats,
+  rebuildSupplierNetworkStatsIncremental,
+} from "./supplier-trust";
 
 /**
  * Integration tests over the committed demo seed. They exercise the real
@@ -77,5 +85,94 @@ describe.skipIf(!process.env.DATABASE_URL)("demo data integration", () => {
 
     const itc = m.items.find((i) => i.kind === "itc");
     expect(itc?.title).toContain("14,400");
+  });
+
+  it("incremental rebuild is a no-op when nothing changed and preserves the table", async () => {
+    // beforeAll ran a FULL rebuild, which sets the watermark to after the seed.
+    const before = await getSupplierNetworkStats();
+
+    const recomputed = await rebuildSupplierNetworkStatsIncremental();
+    // 0 (not -1) confirms the watermark was written by the full rebuild, and
+    // that nothing in the seed is newer than it.
+    expect(recomputed).toBe(0);
+
+    const after = await getSupplierNetworkStats();
+    expect(after.size).toBe(before.size);
+    for (const [gstin, s] of before) {
+      expect(after.get(gstin)).toMatchObject({
+        orgs: s.orgs,
+        score: s.score,
+        invoices: s.invoices,
+        filed: s.filed,
+      });
+    }
+  });
+
+  it("falls back to a full rebuild when there is no watermark", async () => {
+    const full = await getSupplierNetworkStats();
+
+    // Clear the watermark to simulate a never-built graph, then run incremental:
+    // it must fall back to a full rebuild (-1) and reproduce the same table.
+    await db.delete(trustGraphMeta);
+    const result = await rebuildSupplierNetworkStatsIncremental();
+    expect(result).toBe(-1);
+
+    const rebuilt = await getSupplierNetworkStats();
+    expect(rebuilt.size).toBe(full.size);
+    for (const [gstin, s] of full) {
+      expect(rebuilt.get(gstin)).toMatchObject({ orgs: s.orgs, score: s.score });
+    }
+  });
+
+  it("incrementally recomputes only the GSTIN a new invoice touches", async () => {
+    const METRO = "29AABCM3456D1Z1"; // a ≥2-business supplier in the seed
+    const before = await getSupplierNetworkStats();
+    const metroBefore = before.get(METRO);
+    expect(metroBefore).toBeDefined();
+
+    // Book one more Metro invoice for `advertout`, dated in an evaluable period
+    // (the last complete month, which has an uploaded 2B in the seed).
+    const invDate = new Date(lm.getFullYear(), lm.getMonth(), 15);
+    const [inserted] = await db
+      .insert(expenses)
+      .values({
+        orgId: ORG,
+        date: invDate,
+        vendorName: "Metro Cash & Carry",
+        vendorGstin: METRO,
+        vendorInvoiceNumber: "TEST-INCR-0001",
+        invoiceDate: invDate,
+        amount: "1000",
+        taxAmount: "180",
+        totalAmount: "1180",
+        cgst: "90",
+        sgst: "90",
+        igst: "0",
+        itcEligible: true,
+      })
+      .returning({ id: expenses.id });
+
+    try {
+      const touched = await rebuildSupplierNetworkStatsIncremental();
+      expect(touched).toBeGreaterThanOrEqual(1); // recomputed, not a full rescan
+
+      const after = await getSupplierNetworkStats();
+      // Metro gained exactly the one new invoice; still seen by 2 businesses.
+      expect(after.get(METRO)?.invoices).toBe((metroBefore?.invoices ?? 0) + 1);
+      expect(after.get(METRO)?.orgs).toBe(metroBefore?.orgs);
+      // Every other supplier's row is untouched.
+      for (const [gstin, s] of before) {
+        if (gstin === METRO) continue;
+        expect(after.get(gstin)).toMatchObject({
+          orgs: s.orgs,
+          invoices: s.invoices,
+          score: s.score,
+        });
+      }
+    } finally {
+      // Restore the seed baseline so re-runs stay deterministic.
+      await db.delete(expenses).where(eq(expenses.id, inserted.id));
+      await rebuildSupplierNetworkStats();
+    }
   });
 });
