@@ -1,11 +1,4 @@
-import {
-  Document,
-  Page,
-  Text,
-  View,
-  StyleSheet,
-  Font,
-} from "@react-pdf/renderer";
+import { Document, Font, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { format } from "date-fns";
 
 // Styles
@@ -43,7 +36,14 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   metaBlock: { flexDirection: "column", gap: 4 },
-  metaTitle: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#71717a", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 },
+  metaTitle: {
+    fontSize: 9,
+    fontFamily: "Helvetica-Bold",
+    color: "#71717a",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
   metaValue: { fontSize: 10, color: "#09090b" },
   metaSubValue: { fontSize: 9, color: "#52525b" },
 
@@ -63,7 +63,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#f4f4f5",
   },
-  tableHeaderCell: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#71717a", textTransform: "uppercase" },
+  tableHeaderCell: {
+    fontSize: 9,
+    fontFamily: "Helvetica-Bold",
+    color: "#71717a",
+    textTransform: "uppercase",
+  },
   tableCell: { fontSize: 10, color: "#09090b" },
   col_desc: { flex: 4 },
   col_hsn: { flex: 1.5 },
@@ -103,11 +108,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#09090b",
   },
   grandTotalLabel: { fontSize: 10, color: "#ffffff", fontFamily: "Helvetica-Bold" },
-  grandTotalValue: { fontSize: 10, color: "#d4ff00", fontFamily: "Helvetica-Bold" },
+  grandTotalValue: { fontSize: 10, color: "#8B3DFF", fontFamily: "Helvetica-Bold" },
 
   // GST breakdown
   gstSection: { marginBottom: 24 },
-  gstTitle: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#71717a", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 },
+  gstTitle: {
+    fontSize: 9,
+    fontFamily: "Helvetica-Bold",
+    color: "#71717a",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
   gstTable: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 4 },
   gstRow: {
     flexDirection: "row",
@@ -126,7 +138,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafafa",
     borderRadius: 4,
     borderLeftWidth: 2,
-    borderLeftColor: "#d4ff00",
+    borderLeftColor: "#8B3DFF",
   },
   notesLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#71717a", marginBottom: 4 },
   notesText: { fontSize: 9, color: "#52525b", lineHeight: 1.5 },
@@ -225,9 +237,15 @@ export function InvoicePDF({ invoice, lines, org }: InvoicePDFProps) {
           <View style={styles.metaBlock}>
             <Text style={styles.metaTitle}>Bill To</Text>
             <Text style={styles.metaValue}>{invoice.contactName}</Text>
-            {invoice.contactGstin && <Text style={styles.metaSubValue}>GSTIN: {invoice.contactGstin}</Text>}
-            {invoice.contactEmail && <Text style={styles.metaSubValue}>{invoice.contactEmail}</Text>}
-            {invoice.billingAddress && <Text style={styles.metaSubValue}>{invoice.billingAddress}</Text>}
+            {invoice.contactGstin && (
+              <Text style={styles.metaSubValue}>GSTIN: {invoice.contactGstin}</Text>
+            )}
+            {invoice.contactEmail && (
+              <Text style={styles.metaSubValue}>{invoice.contactEmail}</Text>
+            )}
+            {invoice.billingAddress && (
+              <Text style={styles.metaSubValue}>{invoice.billingAddress}</Text>
+            )}
           </View>
           <View style={styles.metaBlock}>
             <Text style={styles.metaTitle}>Invoice Date</Text>
@@ -256,13 +274,20 @@ export function InvoicePDF({ invoice, lines, org }: InvoicePDFProps) {
             <Text style={[styles.tableHeaderCell, styles.col_amount]}>Amount</Text>
           </View>
           {lines.map((line, i) => (
-            <View key={line.id} style={[styles.tableRow, i % 2 === 1 ? { backgroundColor: "#fafafa" } : {}]}>
+            <View
+              key={line.id}
+              style={[styles.tableRow, i % 2 === 1 ? { backgroundColor: "#fafafa" } : {}]}
+            >
               <Text style={[styles.tableCell, styles.col_desc]}>{line.description}</Text>
               <Text style={[styles.tableCell, styles.col_hsn]}>{line.hsnCode ?? "-"}</Text>
               <Text style={[styles.tableCell, styles.col_qty]}>{line.quantity}</Text>
-              <Text style={[styles.tableCell, styles.col_rate]}>{formatINR(parseFloat(line.rate))}</Text>
+              <Text style={[styles.tableCell, styles.col_rate]}>
+                {formatINR(parseFloat(line.rate))}
+              </Text>
               <Text style={[styles.tableCell, styles.col_tax]}>{line.taxRate}%</Text>
-              <Text style={[styles.tableCell, styles.col_amount]}>{formatINR(parseFloat(line.amount))}</Text>
+              <Text style={[styles.tableCell, styles.col_amount]}>
+                {formatINR(parseFloat(line.amount))}
+              </Text>
             </View>
           ))}
         </View>
