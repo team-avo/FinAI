@@ -38,6 +38,9 @@ function main() {
   step("Pushing latest schema to DB", "pnpm", ["exec", "drizzle-kit", "push", "--force"]);
   step("Ensuring org chart of accounts", "pnpm", ["exec", "tsx", "scripts/ensure-chart.ts"]);
   step("Seeding demo users", "pnpm", ["exec", "tsx", "scripts/seed-demo-users.ts"]);
+  if (process.env.SEED_DEMO_DATA === "1") {
+    step("Seeding demo data", "pnpm", ["exec", "tsx", "scripts/seed-demo-data.ts"]);
+  }
   step("Materialising Trust Graph", "pnpm", ["exec", "tsx", "scripts/rebuild-trust-graph.ts"]);
 
   console.log("\n✅ Post-build complete.\n");
