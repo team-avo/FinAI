@@ -31,12 +31,25 @@ export interface SupplierTrust {
   rating: SupplierRating;
   itcAtRisk: number; // ₹ of our ITC this supplier has put at risk
   lastSeen: string | null; // most recent period we have an invoice from them (YYYY-MM)
+  /**
+   * The network signal: how this supplier files across ALL businesses on FinAI,
+   * not just ours. Only present when ≥2 distinct businesses have observed them,
+   * so it never exposes a single other business's data.
+   */
+  network?: { orgs: number; score: number; invoices: number };
+}
+
+export interface SupplierNetworkStat {
+  orgs: number; // distinct businesses that observed this supplier
+  invoices: number;
+  filed: number;
+  score: number; // 0–100
 }
 
 export interface SupplierTrustReport {
   suppliers: SupplierTrust[];
   evaluatedPeriods: string[];
-  totals: { suppliers: number; risky: number; itcAtRisk: number };
+  totals: { suppliers: number; risky: number; itcAtRisk: number; networkVerified: number };
 }
 
 function round2(v: number) {
@@ -70,6 +83,77 @@ interface Acc {
   mismatched: number;
   itcAtRisk: number;
   lastSeen: string | null;
+}
+
+/**
+ * The network effect: filing reliability per supplier GSTIN aggregated across
+ * EVERY business on FinAI. This is the data moat — a supplier's score draws on
+ * all their buyers' observations, so a new business benefits from what everyone
+ * else has already seen.
+ *
+ * Privacy: we only ever expose the aggregate count/score per GSTIN (the
+ * supplier's own filing behaviour), and the caller only shows it when ≥2
+ * distinct businesses observed the supplier — so no single buyer's data leaks.
+ *
+ * Note: this scans all orgs' reconcilable data on each call; at scale it should
+ * be a periodically-materialised per-GSTIN aggregate table rather than a live
+ * full scan.
+ */
+export async function supplierNetworkStats(): Promise<Map<string, SupplierNetworkStat>> {
+  const [twoB, allExpenses] = await Promise.all([
+    db.select().from(gstr2bEntries),
+    db.select().from(expenses),
+  ]);
+
+  // Index 2B by org+period → invoice key; track which periods each org can judge.
+  const twoBByOrgPeriod = new Map<string, Map<string, (typeof twoB)[number]>>();
+  const evaluableByOrg = new Map<string, Set<string>>();
+  for (const b of twoB) {
+    const ok = `${b.orgId}|${b.period}`;
+    let m = twoBByOrgPeriod.get(ok);
+    if (!m) {
+      m = new Map();
+      twoBByOrgPeriod.set(ok, m);
+    }
+    m.set(key(b.supplierGstin, b.invoiceNumber), b);
+    let s = evaluableByOrg.get(b.orgId);
+    if (!s) {
+      s = new Set();
+      evaluableByOrg.set(b.orgId, s);
+    }
+    s.add(b.period);
+  }
+
+  const agg = new Map<string, { invoices: number; filed: number; orgs: Set<string> }>();
+  for (const e of allExpenses) {
+    if (!e.vendorGstin || !e.vendorInvoiceNumber) continue;
+    const when = e.invoiceDate ?? e.date;
+    if (!when) continue;
+    const period = monthKey(new Date(when));
+    if (!evaluableByOrg.get(e.orgId)?.has(period)) continue;
+
+    const g = e.vendorGstin.toUpperCase().trim();
+    let a = agg.get(g);
+    if (!a) {
+      a = { invoices: 0, filed: 0, orgs: new Set() };
+      agg.set(g, a);
+    }
+    a.invoices++;
+    a.orgs.add(e.orgId);
+    const match = twoBByOrgPeriod.get(`${e.orgId}|${period}`)?.get(key(e.vendorGstin, e.vendorInvoiceNumber));
+    if (match) a.filed++;
+  }
+
+  const out = new Map<string, SupplierNetworkStat>();
+  for (const [g, a] of agg) {
+    out.set(g, {
+      orgs: a.orgs.size,
+      invoices: a.invoices,
+      filed: a.filed,
+      score: a.invoices > 0 ? Math.round((a.filed / a.invoices) * 100) : 100,
+    });
+  }
+  return out;
 }
 
 export async function computeSupplierTrust(orgId: string): Promise<SupplierTrustReport> {
@@ -149,6 +233,14 @@ export async function computeSupplierTrust(orgId: string): Promise<SupplierTrust
     };
   });
 
+  // Attach the cross-business network signal, shown only when ≥2 businesses
+  // have observed the supplier (so a single other business is never exposed).
+  const network = await supplierNetworkStats();
+  for (const s of suppliers) {
+    const n = network.get(s.gstin.toUpperCase().trim());
+    if (n && n.orgs >= 2) s.network = { orgs: n.orgs, score: n.score, invoices: n.invoices };
+  }
+
   // Most dangerous first: risky, then by ITC at risk, then lowest score.
   const order: Record<SupplierRating, number> = { risky: 0, watch: 1, reliable: 2 };
   suppliers.sort(
@@ -162,6 +254,7 @@ export async function computeSupplierTrust(orgId: string): Promise<SupplierTrust
       suppliers: suppliers.length,
       risky: suppliers.filter((s) => s.rating === "risky").length,
       itcAtRisk: round2(suppliers.reduce((t, s) => t + s.itcAtRisk, 0)),
+      networkVerified: suppliers.filter((s) => s.network).length,
     },
   };
 }

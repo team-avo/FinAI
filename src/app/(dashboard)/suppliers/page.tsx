@@ -1,6 +1,6 @@
 "use client";
 
-import { Fingerprint, AlertTriangle } from "lucide-react";
+import { Fingerprint, AlertTriangle, Network } from "lucide-react";
 import { trpc } from "@/lib/trpc/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -101,6 +101,12 @@ export default function SuppliersPage() {
                             {s.gstin}
                             {s.lastSeen ? ` · last seen ${monthLabel(s.lastSeen)}` : ""}
                           </div>
+                          {s.network && (
+                            <div className="mt-1 flex items-center gap-1 text-[11px] text-accent">
+                              <Network className="size-3 shrink-0" />
+                              Network: {s.network.score}% filed across {s.network.orgs} businesses
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-fg-muted tabular-nums">
                           {s.filed}/{s.invoices}
@@ -126,9 +132,10 @@ export default function SuppliersPage() {
           </Card>
 
           <p className="text-[12px] text-fg-muted leading-relaxed">
-            Reliability = the share of a supplier&apos;s invoices that actually showed up in the government&apos;s GSTR-2B.
-            Scored only on months you&apos;ve reconciled. Today this reflects your own history — as more businesses join
-            FinAI, each supplier&apos;s score will draw on their filing behaviour across every buyer.
+            Reliability = the share of a supplier&apos;s invoices that actually showed up in the government&apos;s GSTR-2B,
+            scored only on months you&apos;ve reconciled. The <Network className="inline size-3 text-accent" /> <span className="text-accent">network</span> score
+            draws on filing behaviour across <b className="text-fg">every FinAI business</b> that&apos;s bought from a supplier — so you benefit from what
+            others have already seen{data.totals.networkVerified > 0 ? ` (${data.totals.networkVerified} of your suppliers are cross-checked today)` : ""}.
           </p>
         </>
       )}
