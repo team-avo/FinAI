@@ -1,12 +1,11 @@
 import { desc, eq } from "drizzle-orm";
+import type { AIActivityItem, DashboardAggregate } from "@/lib/dashboard/types";
+import { buildDbAggregate } from "@/lib/db/aggregate";
 import { db } from "@/lib/db/client";
 import { aiActivityLog } from "@/lib/db/schema";
-import { router, publicProcedure } from "../init";
-import { findConnectionForUserOrg } from "@/lib/zoho/auth";
 import { getOrBuildAggregate } from "@/lib/zoho/aggregator";
-import { buildDbAggregate } from "@/lib/db/aggregate";
-import type { AIActivityItem, DashboardAggregate } from "@/lib/dashboard/types";
-
+import { findConnectionForUserOrg } from "@/lib/zoho/auth";
+import { protectedProcedure, router } from "../init";
 
 async function fetchAIActivity(orgId: string): Promise<AIActivityItem[]> {
   const rows = await db
@@ -70,9 +69,8 @@ async function fetchAIActivity(orgId: string): Promise<AIActivityItem[]> {
  * regardless of source (Zoho doesn't know about FinAI tool calls).
  */
 export const aggregateRouter = router({
-  get: publicProcedure.query(async ({ ctx }) => {
-    // Authenticated users get their own org's aggregate; unauthenticated
-    // requests keep the context default.
+  get: protectedProcedure.query(async ({ ctx }) => {
+    // Each user sees only their own org's dashboard aggregate.
     const orgId = ctx.orgId;
     let aggregate: DashboardAggregate;
     let source: "zoho" | "db" = "db";
