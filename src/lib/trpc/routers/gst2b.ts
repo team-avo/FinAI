@@ -6,6 +6,7 @@ import { router, protectedProcedure } from "../init";
 import { logActivity } from "./activity";
 import { parse2b, parse2bDate } from "@/lib/gst/gstr2b-parse";
 import { reconcileItc } from "@/lib/accounting/reports/itc-recon";
+import { computeSupplierTrust } from "@/lib/accounting/reports/supplier-trust";
 
 const periodInput = z.string().regex(/^\d{4}-\d{2}$/, "Period must be YYYY-MM");
 
@@ -67,4 +68,10 @@ export const gst2bRouter = router({
     .query(async ({ ctx, input }) => {
       return reconcileItc(ctx.orgId, input.period);
     }),
+
+  // Supplier Trust Graph: how reliably each supplier files, scored from our
+  // whole reconciliation history. Any member (incl. a read-only CA) can view.
+  supplierTrust: protectedProcedure.query(async ({ ctx }) => {
+    return computeSupplierTrust(ctx.orgId);
+  }),
 });

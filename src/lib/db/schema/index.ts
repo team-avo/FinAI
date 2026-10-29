@@ -6,6 +6,7 @@ export * from "./items";
 export * from "./invoices";
 export * from "./expenses";
 export * from "./gst2b";
+export * from "./bank";
 export * from "./invites";
 export * from "./journal";
 export * from "./attachments";

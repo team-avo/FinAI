@@ -13,7 +13,7 @@ const PUBLIC_PATHS = [
   "/api/ai",
 ];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Always pass through static assets and public API routes
