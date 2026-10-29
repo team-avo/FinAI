@@ -31,15 +31,14 @@ function main() {
     return;
   }
   if (!process.env.DATABASE_URL || !process.env.BETTER_AUTH_SECRET) {
-    console.log(
-      "⊘ DATABASE_URL or BETTER_AUTH_SECRET not set — skipping schema push + seed.",
-    );
+    console.log("⊘ DATABASE_URL or BETTER_AUTH_SECRET not set — skipping schema push + seed.");
     return;
   }
 
   step("Pushing latest schema to DB", "pnpm", ["exec", "drizzle-kit", "push", "--force"]);
   step("Ensuring org chart of accounts", "pnpm", ["exec", "tsx", "scripts/ensure-chart.ts"]);
   step("Seeding demo users", "pnpm", ["exec", "tsx", "scripts/seed-demo-users.ts"]);
+  step("Materialising Trust Graph", "pnpm", ["exec", "tsx", "scripts/rebuild-trust-graph.ts"]);
 
   console.log("\n✅ Post-build complete.\n");
 }

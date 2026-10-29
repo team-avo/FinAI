@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { expenses, gstr2bEntries } from "@/lib/db/schema";
+import { expenses, gstr2bEntries, supplierNetworkStats } from "@/lib/db/schema";
 
 /**
  * Supplier Trust Graph (v1).
@@ -99,7 +99,7 @@ interface Acc {
  * be a periodically-materialised per-GSTIN aggregate table rather than a live
  * full scan.
  */
-export async function supplierNetworkStats(): Promise<Map<string, SupplierNetworkStat>> {
+export async function computeSupplierNetworkStats(): Promise<Map<string, SupplierNetworkStat>> {
   const [twoB, allExpenses] = await Promise.all([
     db.select().from(gstr2bEntries),
     db.select().from(expenses),
@@ -140,7 +140,9 @@ export async function supplierNetworkStats(): Promise<Map<string, SupplierNetwor
     }
     a.invoices++;
     a.orgs.add(e.orgId);
-    const match = twoBByOrgPeriod.get(`${e.orgId}|${period}`)?.get(key(e.vendorGstin, e.vendorInvoiceNumber));
+    const match = twoBByOrgPeriod
+      .get(`${e.orgId}|${period}`)
+      ?.get(key(e.vendorGstin, e.vendorInvoiceNumber));
     if (match) a.filed++;
   }
 
@@ -154,6 +156,40 @@ export async function supplierNetworkStats(): Promise<Map<string, SupplierNetwor
     });
   }
   return out;
+}
+
+/**
+ * Recompute the network aggregate and replace the materialised table. Run by
+ * the daily cron and after each GSTR-2B upload. Stores only ≥2-business GSTINs.
+ */
+export async function rebuildSupplierNetworkStats(): Promise<number> {
+  const stats = await computeSupplierNetworkStats();
+  const rows = [...stats.entries()]
+    .filter(([, s]) => s.orgs >= 2)
+    .map(([gstin, s]) => ({
+      gstin,
+      orgs: s.orgs,
+      invoices: s.invoices,
+      filed: s.filed,
+      score: s.score,
+      updatedAt: new Date(),
+    }));
+
+  await db.transaction(async (tx) => {
+    await tx.delete(supplierNetworkStats);
+    if (rows.length > 0) await tx.insert(supplierNetworkStats).values(rows);
+  });
+  return rows.length;
+}
+
+/** Read the materialised network aggregate (fast — a small indexed table). */
+export async function getSupplierNetworkStats(): Promise<Map<string, SupplierNetworkStat>> {
+  const rows = await db.select().from(supplierNetworkStats);
+  const m = new Map<string, SupplierNetworkStat>();
+  for (const r of rows) {
+    m.set(r.gstin, { orgs: r.orgs, invoices: r.invoices, filed: r.filed, score: r.score });
+  }
+  return m;
 }
 
 export async function computeSupplierTrust(orgId: string): Promise<SupplierTrustReport> {
@@ -191,7 +227,16 @@ export async function computeSupplierTrust(orgId: string): Promise<SupplierTrust
     const g = e.vendorGstin.toUpperCase().trim();
     let acc = bySupplier.get(g);
     if (!acc) {
-      acc = { gstin: e.vendorGstin, name: null, invoices: 0, filed: 0, notFiled: 0, mismatched: 0, itcAtRisk: 0, lastSeen: null };
+      acc = {
+        gstin: e.vendorGstin,
+        name: null,
+        invoices: 0,
+        filed: 0,
+        notFiled: 0,
+        mismatched: 0,
+        itcAtRisk: 0,
+        lastSeen: null,
+      };
       bySupplier.set(g, acc);
     }
     if (!acc.name) acc.name = officialName.get(g) ?? e.vendorName ?? null;
@@ -209,7 +254,8 @@ export async function computeSupplierTrust(orgId: string): Promise<SupplierTrust
     acc.filed++;
     const twoBTax = round2(num(match.cgst) + num(match.sgst) + num(match.igst));
     const taxOk = Math.abs(booksTax - twoBTax) <= tol(twoBTax);
-    const taxableOk = Math.abs(num(e.amount) - num(match.taxableValue)) <= tol(num(match.taxableValue));
+    const taxableOk =
+      Math.abs(num(e.amount) - num(match.taxableValue)) <= tol(num(match.taxableValue));
     if (!taxOk || !taxableOk) {
       acc.mismatched++;
       const shortfall = e.itcEligible ? Math.max(0, round2(booksTax - twoBTax)) : 0;
@@ -235,7 +281,7 @@ export async function computeSupplierTrust(orgId: string): Promise<SupplierTrust
 
   // Attach the cross-business network signal, shown only when ≥2 businesses
   // have observed the supplier (so a single other business is never exposed).
-  const network = await supplierNetworkStats();
+  const network = await getSupplierNetworkStats();
   for (const s of suppliers) {
     const n = network.get(s.gstin.toUpperCase().trim());
     if (n && n.orgs >= 2) s.network = { orgs: n.orgs, score: n.score, invoices: n.invoices };

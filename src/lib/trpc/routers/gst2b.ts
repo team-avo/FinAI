@@ -1,12 +1,15 @@
-import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
+import { z } from "zod";
+import { reconcileItc } from "@/lib/accounting/reports/itc-recon";
+import {
+  computeSupplierTrust,
+  rebuildSupplierNetworkStats,
+} from "@/lib/accounting/reports/supplier-trust";
 import { db } from "@/lib/db/client";
 import { gstr2bEntries } from "@/lib/db/schema";
-import { router, protectedProcedure } from "../init";
-import { logActivity } from "./activity";
 import { parse2b, parse2bDate } from "@/lib/gst/gstr2b-parse";
-import { reconcileItc } from "@/lib/accounting/reports/itc-recon";
-import { computeSupplierTrust } from "@/lib/accounting/reports/supplier-trust";
+import { protectedProcedure, router } from "../init";
+import { logActivity } from "./activity";
 
 const periodInput = z.string().regex(/^\d{4}-\d{2}$/, "Period must be YYYY-MM");
 
@@ -49,6 +52,10 @@ export const gst2bRouter = router({
         entityRef: input.period,
         output: { period: input.period, invoices: parsed.length },
       }).catch(() => {});
+
+      // Refresh the cross-business Trust Graph with this org's new filing
+      // observations (fire-and-forget — the page reads the last materialised copy).
+      rebuildSupplierNetworkStats().catch(() => {});
 
       return { period: input.period, imported: parsed.length };
     }),
