@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, gt, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { expenses, gstr2bEntries, supplierNetworkStats } from "@/lib/db/schema";
+import { expenses, gstr2bEntries, supplierNetworkStats, trustGraphMeta } from "@/lib/db/schema";
 
 /**
  * Supplier Trust Graph (v1).
@@ -99,16 +99,39 @@ interface Acc {
  * be a periodically-materialised per-GSTIN aggregate table rather than a live
  * full scan.
  */
-export async function computeSupplierNetworkStats(): Promise<Map<string, SupplierNetworkStat>> {
-  const [twoB, allExpenses] = await Promise.all([
-    db.select().from(gstr2bEntries),
-    db.select().from(expenses),
-  ]);
+/** Columns of expenses / 2B the network aggregate actually needs. */
+type ExpenseRowLite = {
+  orgId: string;
+  vendorGstin: string | null;
+  vendorInvoiceNumber: string | null;
+  invoiceDate: Date | null;
+  date: Date | null;
+};
+type TwoBRowLite = {
+  orgId: string;
+  period: string;
+  supplierGstin: string;
+  invoiceNumber: string;
+};
 
-  // Index 2B by org+period → invoice key; track which periods each org can judge.
-  const twoBByOrgPeriod = new Map<string, Map<string, (typeof twoB)[number]>>();
-  const evaluableByOrg = new Map<string, Set<string>>();
-  for (const b of twoB) {
+/**
+ * The core aggregation, shared by the full and incremental rebuilds. Scores
+ * every supplier GSTIN seen in `expenseRows` across all the orgs in that set.
+ *
+ * `evaluableByOrg` (period with an uploaded 2B, per org) is passed in rather
+ * than derived from `twoBRows`, because the incremental path matches against
+ * only the touched GSTINs' 2B rows while still needing every org's full set of
+ * evaluable periods — the 2B row that makes a period judgeable may belong to an
+ * untouched supplier.
+ */
+function aggregateNetwork(
+  expenseRows: ExpenseRowLite[],
+  twoBRows: TwoBRowLite[],
+  evaluableByOrg: Map<string, Set<string>>,
+): Map<string, SupplierNetworkStat> {
+  // Index the 2B rows by org+period → invoice key, for filed-match lookups.
+  const twoBByOrgPeriod = new Map<string, Map<string, TwoBRowLite>>();
+  for (const b of twoBRows) {
     const ok = `${b.orgId}|${b.period}`;
     let m = twoBByOrgPeriod.get(ok);
     if (!m) {
@@ -116,16 +139,10 @@ export async function computeSupplierNetworkStats(): Promise<Map<string, Supplie
       twoBByOrgPeriod.set(ok, m);
     }
     m.set(key(b.supplierGstin, b.invoiceNumber), b);
-    let s = evaluableByOrg.get(b.orgId);
-    if (!s) {
-      s = new Set();
-      evaluableByOrg.set(b.orgId, s);
-    }
-    s.add(b.period);
   }
 
   const agg = new Map<string, { invoices: number; filed: number; orgs: Set<string> }>();
-  for (const e of allExpenses) {
+  for (const e of expenseRows) {
     if (!e.vendorGstin || !e.vendorInvoiceNumber) continue;
     const when = e.invoiceDate ?? e.date;
     if (!when) continue;
@@ -158,9 +175,62 @@ export async function computeSupplierNetworkStats(): Promise<Map<string, Supplie
   return out;
 }
 
+export async function computeSupplierNetworkStats(): Promise<Map<string, SupplierNetworkStat>> {
+  const [twoB, allExpenses] = await Promise.all([
+    db.select().from(gstr2bEntries),
+    db.select().from(expenses),
+  ]);
+
+  const evaluableByOrg = new Map<string, Set<string>>();
+  for (const b of twoB) {
+    let s = evaluableByOrg.get(b.orgId);
+    if (!s) {
+      s = new Set();
+      evaluableByOrg.set(b.orgId, s);
+    }
+    s.add(b.period);
+  }
+
+  return aggregateNetwork(allExpenses, twoB, evaluableByOrg);
+}
+
+const TRUST_META_ID = "singleton";
+
 /**
- * Recompute the network aggregate and replace the materialised table. Run by
- * the daily cron and after each GSTR-2B upload. Stores only ≥2-business GSTINs.
+ * SQL for the stored watermark, used directly in WHERE clauses so the
+ * "created since last rebuild" comparison happens entirely inside Postgres.
+ * Both this and the `created_at` columns live in the same naive-timestamp domain
+ * (written by `now()`), so a JS Date — with its timezone round-trip hazard —
+ * never crosses the boundary.
+ */
+const watermarkExpr = sql`(select ${trustGraphMeta.lastRebuiltAt} from ${trustGraphMeta} where ${trustGraphMeta.id} = ${TRUST_META_ID})`;
+
+/** Whether the graph has ever been built (null → never, so fall back to full). */
+async function hasTrustGraphWatermark(): Promise<boolean> {
+  const [row] = await db
+    .select({ id: trustGraphMeta.id })
+    .from(trustGraphMeta)
+    .where(eq(trustGraphMeta.id, TRUST_META_ID));
+  return !!row;
+}
+
+/**
+ * Record the rebuild instant (via the DB clock, so it shares `created_at`'s
+ * exact domain) so the next incremental pass knows where to start.
+ */
+async function setTrustGraphWatermark(): Promise<void> {
+  await db
+    .insert(trustGraphMeta)
+    .values({ id: TRUST_META_ID, lastRebuiltAt: sql`now()` })
+    .onConflictDoUpdate({ target: trustGraphMeta.id, set: { lastRebuiltAt: sql`now()` } });
+}
+
+/**
+ * Full recompute: replace the entire materialised table. Run by the daily cron
+ * as the authoritative backstop (it alone catches deletions). Stores only
+ * ≥2-business GSTINs and advances the incremental watermark.
+ *
+ * Advances the incremental watermark to "now" on completion.
  */
 export async function rebuildSupplierNetworkStats(): Promise<number> {
   const stats = await computeSupplierNetworkStats();
@@ -179,7 +249,149 @@ export async function rebuildSupplierNetworkStats(): Promise<number> {
     await tx.delete(supplierNetworkStats);
     if (rows.length > 0) await tx.insert(supplierNetworkStats).values(rows);
   });
+  await setTrustGraphWatermark();
   return rows.length;
+}
+
+/**
+ * Incremental refresh — the hot path, run after every GSTR-2B upload. Instead of
+ * rescanning every org's reconcilable data, it recomputes only the supplier
+ * GSTINs touched since the last rebuild and upserts just those rows. The daily
+ * full rebuild stays the authoritative backstop (and the only thing that reaps
+ * deletions, which a timestamp watermark cannot signal).
+ *
+ * Returns the number of GSTINs recomputed, or -1 if it fell back to a full
+ * rebuild (no watermark yet).
+ */
+export async function rebuildSupplierNetworkStatsIncremental(): Promise<number> {
+  if (!(await hasTrustGraphWatermark())) {
+    // Never built → do the authoritative full pass (which sets the watermark).
+    await rebuildSupplierNetworkStats();
+    return -1;
+  }
+
+  // 1. Which supplier GSTINs could have changed since the last rebuild? New/edited
+  //    expenses name a vendor directly; new 2B rows name a supplier directly.
+  //    The watermark is compared inside Postgres (same timestamp domain as the
+  //    created_at / updated_at columns).
+  const [changedExpenses, newTwoB] = await Promise.all([
+    db
+      .select({
+        orgId: expenses.orgId,
+        vendorGstin: expenses.vendorGstin,
+        invoiceDate: expenses.invoiceDate,
+        date: expenses.date,
+      })
+      .from(expenses)
+      .where(or(gt(expenses.createdAt, watermarkExpr), gt(expenses.updatedAt, watermarkExpr))),
+    db
+      .select({
+        orgId: gstr2bEntries.orgId,
+        period: gstr2bEntries.period,
+        supplierGstin: gstr2bEntries.supplierGstin,
+      })
+      .from(gstr2bEntries)
+      .where(gt(gstr2bEntries.createdAt, watermarkExpr)),
+  ]);
+
+  const touched = new Set<string>();
+  for (const e of changedExpenses) {
+    if (e.vendorGstin) touched.add(e.vendorGstin.toUpperCase().trim());
+  }
+  for (const b of newTwoB) touched.add(b.supplierGstin.toUpperCase().trim());
+
+  // A new 2B for an (org, period) can flip that whole period judgeable, which
+  // changes the invoice counts of EVERY supplier that org booked in the period —
+  // not just the ones named on the new 2B rows. Pull those vendors in too.
+  const newOrgPeriods = new Set(newTwoB.map((b) => `${b.orgId}|${b.period}`));
+  if (newOrgPeriods.size > 0) {
+    const orgIds = [...new Set(newTwoB.map((b) => b.orgId))];
+    const orgExpenses = await db
+      .select({
+        orgId: expenses.orgId,
+        vendorGstin: expenses.vendorGstin,
+        invoiceDate: expenses.invoiceDate,
+        date: expenses.date,
+      })
+      .from(expenses)
+      .where(inArray(expenses.orgId, orgIds));
+    for (const e of orgExpenses) {
+      if (!e.vendorGstin) continue;
+      const when = e.invoiceDate ?? e.date;
+      if (!when) continue;
+      if (newOrgPeriods.has(`${e.orgId}|${monthKey(new Date(when))}`)) {
+        touched.add(e.vendorGstin.toUpperCase().trim());
+      }
+    }
+  }
+
+  if (touched.size === 0) {
+    await setTrustGraphWatermark();
+    return 0;
+  }
+  const touchedArr = [...touched];
+
+  // 2. Recompute those GSTINs across ALL orgs. Evaluability needs every org's 2B
+  //    periods (the deciding 2B row may be for an untouched supplier), so read
+  //    the tiny distinct org→period set in full; matching/aggregation only needs
+  //    the rows for the touched GSTINs.
+  const [allTwoBPeriods, touchedTwoB, touchedExpenses] = await Promise.all([
+    db
+      .selectDistinct({ orgId: gstr2bEntries.orgId, period: gstr2bEntries.period })
+      .from(gstr2bEntries),
+    db.select().from(gstr2bEntries).where(inArray(gstr2bEntries.supplierGstin, touchedArr)),
+    db.select().from(expenses).where(inArray(expenses.vendorGstin, touchedArr)),
+  ]);
+
+  const evaluableByOrg = new Map<string, Set<string>>();
+  for (const r of allTwoBPeriods) {
+    let s = evaluableByOrg.get(r.orgId);
+    if (!s) {
+      s = new Set();
+      evaluableByOrg.set(r.orgId, s);
+    }
+    s.add(r.period);
+  }
+
+  const stats = aggregateNetwork(touchedExpenses, touchedTwoB, evaluableByOrg);
+
+  // 3. Upsert the GSTINs that still qualify (≥2 orgs); delete the rest of the
+  //    touched set — they dropped below the threshold or lost all evaluable data.
+  const keep = [...stats.entries()].filter(([, s]) => s.orgs >= 2);
+  const keepGstins = new Set(keep.map(([g]) => g));
+  const toDelete = touchedArr.filter((g) => !keepGstins.has(g));
+
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    for (const [gstin, s] of keep) {
+      await tx
+        .insert(supplierNetworkStats)
+        .values({
+          gstin,
+          orgs: s.orgs,
+          invoices: s.invoices,
+          filed: s.filed,
+          score: s.score,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: supplierNetworkStats.gstin,
+          set: {
+            orgs: s.orgs,
+            invoices: s.invoices,
+            filed: s.filed,
+            score: s.score,
+            updatedAt: now,
+          },
+        });
+    }
+    if (toDelete.length > 0) {
+      await tx.delete(supplierNetworkStats).where(inArray(supplierNetworkStats.gstin, toDelete));
+    }
+  });
+
+  await setTrustGraphWatermark();
+  return keep.length;
 }
 
 /** Read the materialised network aggregate (fast — a small indexed table). */
