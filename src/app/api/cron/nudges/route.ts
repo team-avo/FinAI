@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { rebuildSupplierNetworkStats } from "@/lib/accounting/reports/supplier-trust";
 import { runNudges } from "@/lib/ai/nudges";
 import { getActiveOrgIds } from "@/lib/db/active-orgs";
+import { seedCurrentMonthLedger } from "@/lib/demo/current-month-ledger";
 import { logActivity } from "@/lib/trpc/routers/activity";
 
 export const runtime = "nodejs";
@@ -43,7 +44,25 @@ export async function GET(req: NextRequest) {
       console.error("Trust Graph rebuild error:", error);
     }
 
-    return NextResponse.json({ status: "ok", orgs: orgIds.length, results, networkStored });
+    // Keep the demo org's current-month P&L evergreen: the one-shot seed anchors
+    // the ledger to the month it ran in, so without a daily re-anchor the
+    // Dashboard MTD empties out when the calendar month rolls over.
+    let demoLedger: unknown = null;
+    if (process.env.SEED_DEMO_DATA === "1") {
+      try {
+        demoLedger = await seedCurrentMonthLedger("advertout");
+      } catch (error) {
+        console.error("Demo ledger refresh error:", error);
+      }
+    }
+
+    return NextResponse.json({
+      status: "ok",
+      orgs: orgIds.length,
+      results,
+      networkStored,
+      demoLedger,
+    });
   } catch (error) {
     console.error("Nudges cron error:", error);
     return NextResponse.json({ status: "error" }, { status: 500 });
