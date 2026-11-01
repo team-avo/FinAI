@@ -1,8 +1,6 @@
-import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db/client";
-import { memberships } from "@/lib/db/schema";
 import { provisionOrgForUser } from "./provision";
+import { resolvePrimaryOrg } from "./resolve-org";
 
 /**
  * Resolve the authenticated user's org for a raw API-route Request — the
@@ -10,7 +8,9 @@ import { provisionOrgForUser } from "./provision";
  * valid session. Mirrors context.ts: a user always resolves to THEIR own org
  * (provisioning one if needed), never a shared default.
  */
-export async function getSessionOrg(req: Request): Promise<{ userId: string; orgId: string } | null> {
+export async function getSessionOrg(
+  req: Request,
+): Promise<{ userId: string; orgId: string } | null> {
   let user: { id: string; name?: string | null; email?: string | null } | null = null;
   try {
     const session = await auth.api.getSession({ headers: req.headers });
@@ -22,13 +22,9 @@ export async function getSessionOrg(req: Request): Promise<{ userId: string; org
   }
   if (!user) return null;
 
-  const [m] = await db
-    .select({ orgId: memberships.orgId })
-    .from(memberships)
-    .where(eq(memberships.userId, user.id))
-    .orderBy(memberships.createdAt)
-    .limit(1);
-
+  // Deterministic primary-org resolution (see resolvePrimaryOrg) — the same org
+  // the tRPC context resolves, so route handlers and the app never disagree.
+  const m = await resolvePrimaryOrg(user.id);
   const orgId = m?.orgId ?? (await provisionOrgForUser(user));
   return { userId: user.id, orgId };
 }
