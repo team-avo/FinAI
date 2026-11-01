@@ -1,11 +1,9 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
-import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db/client";
-import { memberships } from "@/lib/db/schema";
 import { provisionOrgForUser } from "@/lib/auth/provision";
+import { type MemberRole, resolvePrimaryOrg } from "@/lib/auth/resolve-org";
 
-export type MemberRole = "owner" | "accountant" | "viewer";
+export type { MemberRole };
 
 export type Context = {
   orgId: string;
@@ -33,18 +31,15 @@ export async function createContext({ req }: FetchCreateContextFnOptions): Promi
   if (userId && sessionUser) {
     // Authenticated users resolve to THEIR OWN org — never inherit the default.
     // An empty orgId simply returns no rows, which is safe; it never leaks
-    // another org's data.
+    // another org's data. Resolution is deterministic (see resolvePrimaryOrg):
+    // a user in multiple orgs always resolves the same one, so every page shows
+    // a consistent org.
     orgId = "";
     try {
-      const [m] = await db
-        .select({ orgId: memberships.orgId, role: memberships.role })
-        .from(memberships)
-        .where(eq(memberships.userId, userId))
-        .orderBy(memberships.createdAt)
-        .limit(1);
+      const m = await resolvePrimaryOrg(userId);
       if (m) {
         orgId = m.orgId;
-        role = m.role as MemberRole;
+        role = m.role;
       } else {
         // New sign-up with no org yet — give them their own.
         orgId = await provisionOrgForUser(sessionUser);
