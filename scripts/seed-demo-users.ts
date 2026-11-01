@@ -16,10 +16,10 @@
  *                          Better Auth internals; doesn't affect insertion)
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { auth } from "../src/lib/auth";
 import { db } from "../src/lib/db/client";
-import { organizations, users, memberships } from "../src/lib/db/schema";
+import { memberships, organizations, users } from "../src/lib/db/schema";
 
 const ORG_ID = "advertout";
 const ORG_NAME = "AdvertOut";
@@ -102,15 +102,16 @@ async function ensureUser(u: DemoUser) {
     console.log(`+ Created user ${u.email} (${userId})`);
   }
 
-  // Ensure membership of AdvertOut org
+  // Ensure membership of the AdvertOut org specifically (not just *any* org —
+  // a stray membership must never cause us to skip linking AdvertOut).
   const [membership] = await db
     .select({ id: memberships.id })
     .from(memberships)
-    .where(eq(memberships.userId, userId))
+    .where(and(eq(memberships.userId, userId), eq(memberships.orgId, ORG_ID)))
     .limit(1);
 
   if (membership) {
-    console.log(`  ✓ Membership already exists`);
+    console.log(`  ✓ Membership of "${ORG_ID}" already exists`);
   } else {
     await db.insert(memberships).values({
       orgId: ORG_ID,
@@ -118,6 +119,19 @@ async function ensureUser(u: DemoUser) {
       role: u.role,
     });
     console.log(`  + Linked to org "${ORG_ID}" as ${u.role}`);
+  }
+
+  // Demo accounts belong ONLY to AdvertOut. Prune any stray memberships (e.g.
+  // from an invite accepted while testing) so org resolution is unambiguous and
+  // the demo always lands on the rich AdvertOut data instead of an empty org.
+  const pruned = await db
+    .delete(memberships)
+    .where(and(eq(memberships.userId, userId), ne(memberships.orgId, ORG_ID)))
+    .returning({ orgId: memberships.orgId });
+  if (pruned.length > 0) {
+    console.log(
+      `  − Pruned ${pruned.length} stray membership(s): ${pruned.map((p) => p.orgId).join(", ")}`,
+    );
   }
 }
 
@@ -138,7 +152,9 @@ async function main() {
     return;
   }
 
-  console.log(`\nSeeding demo data into ${process.env.DATABASE_URL.replace(/:[^:@]*@/, ":****@")}\n`);
+  console.log(
+    `\nSeeding demo data into ${process.env.DATABASE_URL.replace(/:[^:@]*@/, ":****@")}\n`,
+  );
 
   await ensureOrg();
   for (const u of DEMO_USERS) {
