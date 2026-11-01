@@ -1,9 +1,10 @@
 import { execSync } from "node:child_process";
-import { eq } from "drizzle-orm";
+import { and, eq, gte, like } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { computeMoneyCheck } from "@/lib/ai/money-check";
 import { db } from "@/lib/db/client";
-import { expenses, trustGraphMeta } from "@/lib/db/schema";
+import { expenses, invoices, trustGraphMeta } from "@/lib/db/schema";
+import { seedCurrentMonthLedger } from "@/lib/demo/current-month-ledger";
 import { forecastCash } from "./cash-forecast";
 import { reconcileItc } from "./itc-recon";
 import {
@@ -174,5 +175,37 @@ describe.skipIf(!process.env.DATABASE_URL)("demo data integration", () => {
       await db.delete(expenses).where(eq(expenses.id, inserted.id));
       await rebuildSupplierNetworkStats();
     }
+  });
+
+  it("re-anchors the demo current-month P&L ledger, idempotently", async () => {
+    // Evergreen refresh: posts this month's demo revenue so the Dashboard MTD is
+    // never stale. Running it again must not duplicate.
+    const r = await seedCurrentMonthLedger(ORG);
+    expect(r.posted).toBe(true);
+    expect(r.invoices).toBe(2);
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const demoRev = async () =>
+      db
+        .select({ total: invoices.total, status: invoices.status })
+        .from(invoices)
+        .where(
+          and(
+            eq(invoices.orgId, ORG),
+            gte(invoices.issueDate, monthStart),
+            like(invoices.number, "DEMO-REV-%"),
+          ),
+        );
+
+    const first = await demoRev();
+    expect(first).toHaveLength(2);
+    expect(first.every((i) => i.status === "paid")).toBe(true);
+    // 180000 + 120000 subtotal, each +18% GST = ₹3,54,000 of paid revenue.
+    const sum = first.reduce((s, i) => s + parseFloat(i.total), 0);
+    expect(sum).toBeCloseTo(354000, 2);
+
+    // Idempotent — a second run replaces rather than appends.
+    await seedCurrentMonthLedger(ORG);
+    expect(await demoRev()).toHaveLength(2);
   });
 });
