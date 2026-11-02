@@ -75,7 +75,13 @@ export const aggregateRouter = router({
     let aggregate: DashboardAggregate;
     let source: "zoho" | "db" = "db";
 
-    const connection = await findConnectionForUserOrg(ctx.userId, orgId);
+    // Demo org: always serve the curated local books. A stray Zoho test
+    // connection (e.g. an empty sandbox org) must never override the seeded
+    // demo data and blank out the dashboard. Scoped to the demo org under the
+    // seed flag so real users who connect Zoho are unaffected.
+    const isDemoOrg = orgId === "advertout" && process.env.SEED_DEMO_DATA === "1";
+
+    const connection = isDemoOrg ? null : await findConnectionForUserOrg(ctx.userId, orgId);
 
     if (connection) {
       try {
