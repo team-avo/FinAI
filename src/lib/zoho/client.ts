@@ -1,5 +1,5 @@
-import { getFreshConnection } from "./auth";
 import type { ZohoConnection } from "@/lib/db/schema";
+import { getFreshConnection } from "./auth";
 
 interface ZohoFetchOptions {
   /** HTTP method. Defaults to GET. */
@@ -10,6 +10,8 @@ interface ZohoFetchOptions {
   body?: unknown;
   /** If true, do NOT auto-add organization_id (rare — most endpoints require it). */
   skipOrgId?: boolean;
+  /** Accept header. Defaults to application/json; set e.g. "application/pdf" for binary. */
+  accept?: string;
 }
 
 function apiBaseUrl(conn: ZohoConnection): string {
@@ -40,11 +42,37 @@ async function attempt(
     headers: {
       Authorization: `Zoho-oauthtoken ${accessToken}`,
       "Content-Type": "application/json",
-      Accept: "application/json",
+      Accept: options.accept ?? "application/json",
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
     cache: "no-store",
   });
+}
+
+/** Shared token-refresh + 429-backoff loop, returning the raw Response. */
+async function attemptWithRetry(
+  connection: ZohoConnection,
+  path: string,
+  options: ZohoFetchOptions,
+): Promise<{ conn: ZohoConnection; res: Response }> {
+  let conn = await getFreshConnection(connection.id);
+  let res = await attempt(conn, path, options, conn.accessToken);
+
+  if (res.status === 401) {
+    conn = await getFreshConnection(connection.id);
+    res = await attempt(conn, path, options, conn.accessToken);
+  }
+
+  let backoff = 1000;
+  for (let i = 0; i < 3 && res.status === 429; i++) {
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : backoff;
+    await new Promise((r) => setTimeout(r, wait));
+    backoff *= 2;
+    res = await attempt(conn, path, options, conn.accessToken);
+  }
+
+  return { conn, res };
 }
 
 /**
@@ -59,32 +87,37 @@ export async function zohoFetch<T>(
   path: string,
   options: ZohoFetchOptions = {},
 ): Promise<T> {
-  let conn = await getFreshConnection(connection.id);
-  let res = await attempt(conn, path, options, conn.accessToken);
-
-  if (res.status === 401) {
-    // Force a refresh by setting expiry in the past via getFreshConnection's
-    // grace-window — simplest path: re-read the row (in case another worker
-    // already refreshed), then retry. If still 401, the refresh in `auth.ts`
-    // will have rotated by now since we just re-fetched.
-    conn = await getFreshConnection(connection.id);
-    res = await attempt(conn, path, options, conn.accessToken);
-  }
-
-  let backoff = 1000;
-  for (let i = 0; i < 3 && res.status === 429; i++) {
-    const retryAfter = Number(res.headers.get("retry-after"));
-    const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : backoff;
-    await new Promise((r) => setTimeout(r, wait));
-    backoff *= 2;
-    res = await attempt(conn, path, options, conn.accessToken);
-  }
+  const { res } = await attemptWithRetry(connection, path, options);
 
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Zoho API ${options.method ?? "GET"} ${path} failed (${res.status}): ${text}`);
   }
   return (await res.json()) as T;
+}
+
+/**
+ * Binary variant of {@link zohoFetch} — same auth/refresh/backoff, but returns
+ * the raw bytes instead of parsing JSON. Used for the invoice-PDF endpoint
+ * (`/invoices/{id}?accept=pdf`), which replies with `application/pdf`.
+ *
+ * On error Zoho returns a JSON envelope, so we read it as text for the message.
+ */
+export async function zohoFetchBinary(
+  connection: ZohoConnection,
+  path: string,
+  options: ZohoFetchOptions = {},
+): Promise<Buffer> {
+  const { res } = await attemptWithRetry(connection, path, {
+    ...options,
+    accept: options.accept ?? "application/pdf",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Zoho API ${options.method ?? "GET"} ${path} failed (${res.status}): ${text}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
 }
 
 /**
@@ -101,11 +134,9 @@ export async function zohoFetchAll<T>(
 ): Promise<T[]> {
   const out: T[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const data = await zohoFetch<{ page_context?: { has_more_page?: boolean } } & Record<string, unknown>>(
-      connection,
-      path,
-      { ...options, query: { ...options.query, page, per_page: perPage } },
-    );
+    const data = await zohoFetch<
+      { page_context?: { has_more_page?: boolean } } & Record<string, unknown>
+    >(connection, path, { ...options, query: { ...options.query, page, per_page: perPage } });
     const items = (data[listKey] as T[]) ?? [];
     out.push(...items);
     if (!data.page_context?.has_more_page) break;
@@ -136,6 +167,8 @@ export async function listOrganizationsWithRawToken(args: {
     const text = await res.text();
     throw new Error(`Zoho /organizations failed (${res.status}): ${text}`);
   }
-  const data = (await res.json()) as { organizations?: Array<{ organization_id: string; name: string; is_default_org?: boolean }> };
+  const data = (await res.json()) as {
+    organizations?: Array<{ organization_id: string; name: string; is_default_org?: boolean }>;
+  };
   return data.organizations ?? [];
 }
