@@ -7,6 +7,8 @@ export interface WhatsAppToolContext {
   whatsappTo?: string;
   /** Resolved app user, if the sender maps to one. */
   userId?: string;
+  /** Whether this sender is allow-listed to create invoices by chat. */
+  canInvoice?: boolean;
 }
 
 /**
@@ -16,11 +18,20 @@ export interface WhatsAppToolContext {
  * in buildRecordExpense and applies on both channels. Built per-org like the
  * web tools; the webhook also passes the sender's number so draftZohoInvoice
  * can deliver the PDF + Approve/Reject buttons back.
+ *
+ * draftZohoInvoice is only exposed to allow-listed senders (ctx.canInvoice), so
+ * an arbitrary inbound message can never create or bill an invoice.
  */
 export function buildAgentToolsWhatsApp(orgId: string, ctx: WhatsAppToolContext = {}) {
-  return {
+  const base = {
     ...buildAgentTools(orgId),
     recordExpense: buildRecordExpense("whatsapp", orgId),
+  };
+
+  if (!ctx.canInvoice) return base;
+
+  return {
+    ...base,
     draftZohoInvoice: buildDraftZohoInvoice({
       orgId,
       whatsappTo: ctx.whatsappTo,

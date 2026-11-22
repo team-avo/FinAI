@@ -7,6 +7,12 @@ import { buildAgentToolsWhatsApp } from "@/lib/ai/tools/whatsapp";
 import { db } from "@/lib/db/client";
 import { aiConversations, aiMessages } from "@/lib/db/schema";
 import { downloadMedia, sendTextMessage, verifyWebhookSignature } from "@/lib/whatsapp/client";
+import {
+  isInvoiceSender,
+  parseDecisionText,
+  resolveInvoiceApprovalById,
+  resolvePendingInvoiceByText,
+} from "@/lib/whatsapp/invoice-approval";
 import { transcribeAudio } from "@/lib/whatsapp/transcribe";
 
 export const runtime = "nodejs";
@@ -46,6 +52,28 @@ export async function POST(req: NextRequest) {
     const msgType = message.type as string;
     let userText = "";
     let imageDataUrl: string | null = null;
+
+    // ── Interactive button taps: Approve / Reject on a pending invoice. These
+    // resolve the approval directly and never reach the AI agent. ──
+    if (msgType === "interactive") {
+      const buttonId = (message.interactive?.button_reply?.id as string | undefined) ?? "";
+      if (buttonId.startsWith("inv_approve:") || buttonId.startsWith("inv_reject:")) {
+        if (!isInvoiceSender(from)) {
+          await sendTextMessage({
+            to: from,
+            text: "You're not set up to approve invoices on this number.",
+          });
+          return NextResponse.json({ status: "ok" });
+        }
+        const action = buttonId.startsWith("inv_approve:") ? "approve" : "reject";
+        const approvalId = buttonId.slice(buttonId.indexOf(":") + 1);
+        const reply = await resolveInvoiceApprovalById({ approvalId, action, from });
+        await sendTextMessage({ to: from, text: reply });
+        return NextResponse.json({ status: "ok" });
+      }
+      // Any other interactive payload — nothing to act on.
+      return NextResponse.json({ status: "ok" });
+    }
 
     if (msgType === "text") {
       userText = message.text?.body ?? "";
@@ -111,6 +139,20 @@ export async function POST(req: NextRequest) {
 
     if (!userText.trim()) return NextResponse.json({ status: "ok" });
 
+    // ── YES/NO text reply to a pending invoice (fallback for the buttons). Only
+    // for allow-listed senders, and only if they actually have one pending —
+    // otherwise the message falls through to the normal agent. ──
+    if (msgType === "text" && isInvoiceSender(from)) {
+      const decision = parseDecisionText(userText);
+      if (decision) {
+        const reply = await resolvePendingInvoiceByText({ from, action: decision });
+        if (reply) {
+          await sendTextMessage({ to: from, text: reply });
+          return NextResponse.json({ status: "ok" });
+        }
+      }
+    }
+
     const [existing] = await db
       .select()
       .from(aiConversations)
@@ -160,7 +202,10 @@ export async function POST(req: NextRequest) {
       model: google("gemini-3.8-flash"),
       system: buildSystemPrompt(),
       messages: [...priorMessages, { role: "user", content: currentContent }],
-      tools: buildAgentToolsWhatsApp("advertout"),
+      tools: buildAgentToolsWhatsApp("advertout", {
+        whatsappTo: from,
+        canInvoice: isInvoiceSender(from),
+      }),
       temperature: 0.1,
     });
 
