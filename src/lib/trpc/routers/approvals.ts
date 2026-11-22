@@ -1,41 +1,14 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { postExpenseRecord } from "@/lib/ai/tools";
+import { executeApproval, voidApprovalInvoice } from "@/lib/approvals/execute";
 import { db } from "@/lib/db/client";
 import { approvalQueue } from "@/lib/db/schema";
 import { protectedProcedure, router } from "../init";
 import { logActivity } from "./activity";
 
-// Shape of an "expense_record" approval payload (mirrors the recordExpense tool
-// input; validated before we post so a malformed row can't corrupt the ledger).
-const expensePayloadSchema = z.object({
-  date: z.string().optional(),
-  vendorName: z.string().optional(),
-  categoryDescription: z.string(),
-  amount: z.number().positive(),
-  cgst: z.number().min(0),
-  sgst: z.number().min(0),
-  igst: z.number().min(0),
-  vendorGstin: z.string().optional(),
-  vendorInvoiceNumber: z.string().optional(),
-  invoiceDate: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-// Execute a queued action for real. Returns the posting result (or null when
-// the approval type has no executor yet). NOTE: recordExpense posts to the
-// capture org ("advertout"); the approve mutation only claims rows whose orgId
-// matches ctx.orgId, so org stays consistent until ORG_ID is de-hardcoded.
-async function executeApproval(row: typeof approvalQueue.$inferSelect): Promise<unknown> {
-  if (row.type === "expense_record") {
-    const parsed = expensePayloadSchema.parse(row.payload);
-    // Post-only primitive (no routing) so approving never re-queues the item.
-    // Posts into the approval's own org.
-    return postExpenseRecord(parsed, row.orgId);
-  }
-  // Other approval types are not auto-posted yet; approving records the decision.
-  return null;
-}
+// Execution lives in @/lib/approvals/execute so the WhatsApp approval resolver
+// and this router act on a queued item identically. The approve mutation only
+// claims rows whose orgId matches ctx.orgId, keeping org consistent.
 
 export const approvalsRouter = router({
   list: protectedProcedure
@@ -166,6 +139,20 @@ export const approvalsRouter = router({
         if (!existing) throw new Error("Approval not found");
         return existing;
       }
+
+      // Void the Zoho draft on rejection so cancelled invoices don't linger.
+      // Best-effort — the decision is already recorded; a stray draft is non-critical.
+      await voidApprovalInvoice(row).catch((err) => {
+        logActivity({
+          orgId: ctx.orgId,
+          actor: `user:${ctx.userId}`,
+          action: "approval:void_failed",
+          entityType: "approval",
+          entityRef: input.id,
+          output: { error: err instanceof Error ? err.message : String(err) },
+          success: false,
+        }).catch(() => {});
+      });
 
       await logActivity({
         orgId: ctx.orgId,
