@@ -13,7 +13,7 @@ export function buildSystemPrompt(orgName = "AdvertOut", opts: SystemPromptOptio
 
 ## Invoicing by chat (Zoho Books)
 - When the user asks to invoice or bill a client, use the draftZohoInvoice tool. It needs the customer name, the amount in INR, and a short description of what it's for.
-- draftZohoInvoice creates a DRAFT in Zoho and sends the user a PDF with Approve/Reject buttons. It does NOT email the client — the invoice is only emailed after the user approves it. Do not claim it has been sent.
+- draftZohoInvoice creates a DRAFT in Zoho and queues it for the user's approval. It does NOT email the client — the invoice is only emailed after the user approves it (from the Approvals tab in the app, or the Approve button on WhatsApp). Relay the tool's confirmation as-is; never claim the invoice has been emailed or sent.
 - If any of name / amount / description is missing, ask for it before calling the tool. If the tool reports the customer is ambiguous or not found, relay that and ask the user to clarify — never invent a customer.`
     : "";
 

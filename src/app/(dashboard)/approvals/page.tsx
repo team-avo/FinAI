@@ -49,6 +49,21 @@ function PayloadSummary({ type, payload }: { type: string; payload: Record<strin
       </div>
     );
   }
+  if (type === "invoice_send") {
+    const customer = payload.customerName as string | undefined;
+    const number = payload.invoiceNumber as string | undefined;
+    const email = payload.customerEmail as string | null | undefined;
+    const rawTotal = payload.total as number | string | undefined;
+    const total = typeof rawTotal === "string" ? parseFloat(rawTotal) : rawTotal;
+    return (
+      <div className="text-[12px] text-fg-muted mt-1 space-y-0.5">
+        {customer && <p>Customer: <span className="text-fg font-medium">{customer}</span></p>}
+        {number && <p>Invoice: <span className="text-fg">{number}</span></p>}
+        {total != null && !Number.isNaN(total) && <p>Amount: <span className="text-fg font-semibold">{formatINR(total)}</span></p>}
+        <p className="opacity-70">{email ? `Emails ${email} on approval` : "Emails the customer on approval"}</p>
+      </div>
+    );
+  }
   if (type === "receipt_categorize") {
     const vendor = payload.vendorName as string | undefined;
     const raw = payload.rawText as string | undefined;
